@@ -10,7 +10,8 @@
 |--------|---------|
 | `network` | `AdapterSnapshot`, `AdapterKind`, `IpVersion`; `AddressFetcher` trait for platform-agnostic adapter info retrieval; `FetchError` variants |
 | `network::platform` | Platform-specific implementations; `WindowsFetcher` on Windows using `GetAdaptersAddresses` |
-| `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `MonitorError`, `ApiError` for layered error handling |
+| `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `MonitorError`, `ApiError` for layered error handling |
+| `time` | `Clock` trait for time abstraction; `SystemClock` production implementation |
 
 ## Key Types
 
@@ -33,6 +34,13 @@ IpChangeKind::Added | Removed
 IpChange { adapter, address: IpAddr, timestamp: SystemTime, kind }
 diff(&old, &new, timestamp) -> Vec<IpChange>  // Pure function for change detection
 DebouncePolicy { window: Duration }  // Default: 2 seconds
+PollingMonitor<F, C = SystemClock> { fetcher, clock, interval, debounce }  // Builder: new(), with_clock(), with_debounce()
+PollingStream<F, C>  // Stream<Item = Vec<IpChange>>, returned by PollingMonitor::into_stream()
+merge_changes(&[IpChange], timestamp) -> Vec<IpChange>  // Net effect merge for debounce
+
+// Time abstraction
+Clock trait { now() -> SystemTime }  // Send + Sync
+SystemClock  // Production impl: delegates to SystemTime::now()
 
 // Monitor errors (layered)
 ApiError::WindowsApi(windows::core::Error)  // #[cfg(windows)]

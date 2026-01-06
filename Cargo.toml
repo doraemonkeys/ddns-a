@@ -4,9 +4,17 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"  # edition 2024 requires 1.85+, also satisfies async fn in trait (1.75+)
 
+[lib]
+name = "ddns_a"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ddns-a"
+path = "src/main.rs"
+
 [dependencies]
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "test-util"] }
 tokio-stream = "0.1"
 
 # HTTP types (decoupled from specific HTTP library)

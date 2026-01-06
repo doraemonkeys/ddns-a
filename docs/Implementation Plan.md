@@ -683,7 +683,7 @@ pub use linux::NetlinkFetcher as PlatformFetcher;
 | network-types | 实现 NetworkAdapter/AdapterSnapshot 类型和 AddressFetcher trait | ✅ done | - |
 | windows-fetch | 实现 Windows GetAdaptersAddresses 封装 (WindowsFetcher) | ✅ done | network-types |
 | monitor-core | 定义 IpChange struct、IpChangeKind enum、MonitorError、ApiError、DebouncePolicy、diff() 函数 | ✅ done | network-types |
-| poller | 实现 PollingMonitor<F, C> 泛型轮询器 + MonitorStream trait | ⬜ pending | monitor-core |
+| poller | 实现 PollingMonitor<F, C> 泛型轮询器 + PollingStream | ✅ done | monitor-core |
 | windows-listener | 实现 Windows NotifyIpInterfaceChange 监听器（ApiListener with associated type） | ⬜ pending | windows-fetch, monitor-core |
 | hybrid | 实现 HybridMonitor<F, L, C> 合并 API 事件和轮询 | ⬜ pending | poller, windows-listener |
 | filter | 实现 AdapterFilter trait 和组合过滤器 | ⬜ pending | - |
