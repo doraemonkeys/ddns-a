@@ -12,6 +12,9 @@ mod debounce;
 mod error;
 mod poller;
 
+#[cfg(test)]
+mod poller_test;
+
 pub use change::{IpChange, IpChangeKind, diff};
 pub use debounce::DebouncePolicy;
 pub use error::{ApiError, MonitorError};

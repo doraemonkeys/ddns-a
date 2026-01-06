@@ -7,9 +7,9 @@
 //! - Fetching adapter information ([`AddressFetcher`])
 //! - Platform-specific implementations ([`platform`])
 
+mod adapter;
 mod fetcher;
 pub mod platform;
-mod types;
 
+pub use adapter::{AdapterKind, AdapterSnapshot, IpVersion};
 pub use fetcher::{AddressFetcher, FetchError};
-pub use types::{AdapterKind, AdapterSnapshot, IpVersion};
