@@ -1,0 +1,63 @@
+[package]
+name = "ddns-a"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"  # edition 2024 requires 1.85+, also satisfies async fn in trait (1.75+)
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
+tokio-stream = "0.1"
+
+# HTTP types (decoupled from specific HTTP library)
+http = "1"
+url = "2"
+
+# HTTP client implementation (v0.13 uses rustls by default)
+reqwest = { version = "0.13", features = ["json"] }
+
+# CLI parsing
+clap = { version = "4", features = ["derive"] }
+
+# Configuration parsing
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "2"
+
+# Name filtering (regex patterns)
+regex = "1"
+
+# Template rendering (optional feature)
+handlebars = "6"
+
+# Windows API (platform-specific)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+    "Win32_Foundation",
+]}
+
+
+[lints.rust]
+# Allow tarpaulin cfg for coverage exclusion
+unexpected_cfgs = { level = "warn", check-cfg = [
+    "cfg(tarpaulin_include)",
+    "cfg(tarpaulin)",
+] }
+
+[lints.clippy]
+# 基础配置
+all = "deny" # 拒绝默认规则（把默认警告变成错误）
+# 开启严格模式
+pedantic = { level = "warn", priority = -1 } # 对 pedantic 规则发出警告
+nursery = { level = "warn", priority = -1 }  # 对 nursery 规则发出警告
+# 开启认知复杂度检查，并设为 Deny (报错) 或 Warn (警告)
+cognitive_complexity = "deny"
+too_many_lines = "deny"

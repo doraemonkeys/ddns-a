@@ -1,0 +1,24 @@
+# sloc-guard configuration file
+# Generated with --detect flag
+# Detected: Rust project
+
+version = "2"
+
+[scanner]
+gitignore = true
+exclude = [
+    "**/.git/**",
+    "**/target/**",
+]
+
+[content]
+extensions = ["rs"]
+max_lines = 800
+warn_threshold = 0.9
+skip_comments = true
+skip_blank = true
+
+# [structure]
+# Uncomment to enable directory structure checks
+# max_files = 30
+# max_dirs = 10
