@@ -20,27 +20,30 @@
 IpVersion::V4 | V6 | Both  // includes_v4(), includes_v6()
 AdapterKind::Ethernet | Wireless | Loopback | Virtual | Other(u32)  // is_virtual(), is_loopback()
 AdapterSnapshot { name, kind, ipv4_addresses: Vec<Ipv4Addr>, ipv6_addresses: Vec<Ipv6Addr> }
-AddressFetcher trait { fetch() -> Result<Vec<AdapterSnapshot>, FetchError> }
+  // Methods: new(), has_addresses(), address_count()
+AddressFetcher trait { fetch() -> Result<Vec<AdapterSnapshot>, FetchError> }  // Send + Sync
 FetchError::WindowsApi(windows::core::Error)  // #[cfg(windows)]
           | PermissionDenied { context }
           | Platform { message }
 
 // Platform implementations
-WindowsFetcher::new()  // Windows only, uses GetAdaptersAddresses API
+WindowsFetcher::new()  // Windows only, uses GetAdaptersAddresses API; Default trait
 PlatformFetcher        // Type alias for WindowsFetcher on Windows
 
 // Monitor types
 IpChangeKind::Added | Removed
 IpChange { adapter, address: IpAddr, timestamp: SystemTime, kind }
+  // Methods: new(), added(), removed(), is_added(), is_removed()
 diff(&old, &new, timestamp) -> Vec<IpChange>  // Pure function for change detection
-DebouncePolicy { window: Duration }  // Default: 2 seconds
-PollingMonitor<F, C = SystemClock> { fetcher, clock, interval, debounce }  // Builder: new(), with_clock(), with_debounce()
+DebouncePolicy::new(window), window() -> Duration  // Default: 2 seconds
+PollingMonitor<F, C = SystemClock>  // Builder: new(), with_clock(), with_debounce()
+  // Methods: interval(), debounce(), into_stream()
 PollingStream<F, C>  // Stream<Item = Vec<IpChange>>, returned by PollingMonitor::into_stream()
-merge_changes(&[IpChange], timestamp) -> Vec<IpChange>  // Net effect merge for debounce
+merge_changes(&[IpChange], timestamp) -> Vec<IpChange>  // Net effect merge for external consumers
 
 // Time abstraction
 Clock trait { now() -> SystemTime }  // Send + Sync
-SystemClock  // Production impl: delegates to SystemTime::now()
+SystemClock  // Production impl; Debug, Clone, Copy, Default
 
 // Monitor errors (layered)
 ApiError::WindowsApi(windows::core::Error)  // #[cfg(windows)]
