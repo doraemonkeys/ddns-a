@@ -22,7 +22,7 @@ ci:
 	@$(TEMP_ENV) sloc-guard -q check
 
 # 正常模式
-verify: tarpaulin clippy fmt
+verify: tarpaulin clippy sloc fmt
 
 clippy:
 	cargo clippy --all-targets --all-features -- -D warnings
