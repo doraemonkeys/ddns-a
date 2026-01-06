@@ -10,7 +10,8 @@
 |--------|---------|
 | `network` | `AdapterSnapshot`, `AdapterKind`, `IpVersion`; `AddressFetcher` trait for platform-agnostic adapter info retrieval; `FetchError` variants |
 | `network::platform` | Platform-specific implementations; `WindowsFetcher` on Windows using `GetAdaptersAddresses` |
-| `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `MonitorError`, `ApiError` for layered error handling |
+| `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `ApiListener` trait for platform event notifications; `MonitorError`, `ApiError` for layered error handling |
+| `monitor::platform` | Platform-specific listeners; `WindowsApiListener` on Windows using `NotifyIpInterfaceChange` |
 | `time` | `Clock` trait for time abstraction; `SystemClock` production implementation |
 
 ## Key Types
@@ -44,6 +45,13 @@ merge_changes(&[IpChange], timestamp) -> Vec<IpChange>  // Net effect merge for 
 // Time abstraction
 Clock trait { now() -> SystemTime }  // Send + Sync
 SystemClock  // Production impl; Debug, Clone, Copy, Default
+
+// API event listeners (one-time semantics: into_stream(self) consumes self)
+ApiListener trait { type Stream; fn into_stream(self) -> Self::Stream }  // Send
+  // Stream yields Result<(), ApiError> - notifications, not IP data
+WindowsApiListener::new() -> Result<Self, ApiError>  // Windows only, uses NotifyIpInterfaceChange
+WindowsApiStream  // Stream<Item = Result<(), ApiError>>, auto-cancels on drop
+PlatformListener  // Type alias for WindowsApiListener on Windows
 
 // Monitor errors (layered)
 ApiError::WindowsApi(windows::core::Error)  // #[cfg(windows)]

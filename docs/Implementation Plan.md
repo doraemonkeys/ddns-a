@@ -238,7 +238,7 @@ impl ValidatedConfig {
 | windows-fetch | WindowsFetcher (GetAdaptersAddresses) | ✅ | network-types |
 | monitor-core | IpChange/IpChangeKind/MonitorError/ApiError/DebouncePolicy/diff() | ✅ | network-types |
 | poller | PollingMonitor + PollingStream | ✅ | monitor-core |
-| windows-listener | WindowsApiListener (NotifyIpInterfaceChange) | ⬜ | windows-fetch, monitor-core |
+| windows-listener | WindowsApiListener (NotifyIpInterfaceChange) | ✅ | windows-fetch, monitor-core |
 | hybrid | HybridMonitor | ⬜ | poller, windows-listener |
 | filter | AdapterFilter trait + CompositeFilter | ⬜ | - |
 | webhook-http | HttpRequest/HttpResponse/HttpClient/HttpError/ReqwestClient | ⬜ | - |
