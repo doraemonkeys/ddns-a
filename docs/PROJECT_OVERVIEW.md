@@ -10,7 +10,7 @@
 |--------|---------|
 | `network` | `AdapterSnapshot`, `AdapterKind`, `IpVersion`; `AddressFetcher` trait for platform-agnostic adapter info retrieval; `FetchError` variants |
 | `network::platform` | Platform-specific implementations; `WindowsFetcher` on Windows using `GetAdaptersAddresses` |
-| `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `ApiListener` trait for platform event notifications; `MonitorError`, `ApiError` for layered error handling |
+| `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `HybridMonitor`, `HybridStream` for combined API+polling monitoring; `ApiListener` trait for platform event notifications; `MonitorError`, `ApiError` for layered error handling |
 | `monitor::platform` | Platform-specific listeners; `WindowsApiListener` on Windows using `NotifyIpInterfaceChange` |
 | `time` | `Clock` trait for time abstraction; `SystemClock` production implementation |
 
@@ -40,6 +40,11 @@ DebouncePolicy::new(window), window() -> Duration  // Default: 2 seconds
 PollingMonitor<F, C = SystemClock>  // Builder: new(), with_clock(), with_debounce()
   // Methods: interval(), debounce(), into_stream()
 PollingStream<F, C>  // Stream<Item = Vec<IpChange>>, returned by PollingMonitor::into_stream()
+HybridMonitor<F, L, C = SystemClock>  // Builder: new(), with_clock(), with_debounce()
+  // Methods: poll_interval(), debounce(), into_stream()
+  // Combines API events (L: ApiListener) with polling fallback
+HybridStream<F, S, C>  // Stream<Item = Vec<IpChange>>, auto-degrades to polling on API failure
+  // Methods: is_polling_only() - check if degraded to polling-only mode
 merge_changes(&[IpChange], timestamp) -> Vec<IpChange>  // Net effect merge for external consumers
 
 // Time abstraction

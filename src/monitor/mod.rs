@@ -7,10 +7,12 @@
 //! - Error handling ([`MonitorError`], [`ApiError`])
 //! - Polling-based monitoring ([`PollingMonitor`], [`PollingStream`])
 //! - API-based notifications ([`ApiListener`], [`platform`])
+//! - Hybrid monitoring ([`HybridMonitor`], [`HybridStream`])
 
 mod change;
 mod debounce;
 mod error;
+mod hybrid;
 mod listener;
 pub mod platform;
 mod poller;
@@ -21,5 +23,6 @@ mod poller_test;
 pub use change::{IpChange, IpChangeKind, diff};
 pub use debounce::DebouncePolicy;
 pub use error::{ApiError, MonitorError};
+pub use hybrid::{HybridMonitor, HybridStream};
 pub use listener::ApiListener;
 pub use poller::{PollingMonitor, PollingStream, merge_changes};

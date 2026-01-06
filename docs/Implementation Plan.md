@@ -25,8 +25,8 @@ flowchart TB
     
     subgraph monitor [Monitor Layer]
         Poller[PollingMonitor ✅]
-        ApiListener[ApiListener Trait]
-        Hybrid[HybridMonitor]
+        ApiListener[ApiListener Trait ✅]
+        Hybrid[HybridMonitor ✅]
     end
     
     subgraph action [Action Layer]
@@ -239,7 +239,7 @@ impl ValidatedConfig {
 | monitor-core | IpChange/IpChangeKind/MonitorError/ApiError/DebouncePolicy/diff() | ✅ | network-types |
 | poller | PollingMonitor + PollingStream | ✅ | monitor-core |
 | windows-listener | WindowsApiListener (NotifyIpInterfaceChange) | ✅ | windows-fetch, monitor-core |
-| hybrid | HybridMonitor | ⬜ | poller, windows-listener |
+| hybrid | HybridMonitor + HybridStream | ✅ | poller, windows-listener |
 | filter | AdapterFilter trait + CompositeFilter | ⬜ | - |
 | webhook-http | HttpRequest/HttpResponse/HttpClient/HttpError/ReqwestClient | ⬜ | - |
 | webhook-sender | WebhookSender/HttpWebhook/RetryPolicy | ⬜ | webhook-http |
