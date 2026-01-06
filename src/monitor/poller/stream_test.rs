@@ -5,8 +5,8 @@ use crate::monitor::{DebouncePolicy, IpChange};
 use crate::network::{AdapterKind, AdapterSnapshot, AddressFetcher, FetchError};
 use crate::time::Clock;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 use tokio_stream::StreamExt;
 

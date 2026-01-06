@@ -5,8 +5,8 @@ use crate::monitor::DebouncePolicy;
 use crate::network::{AdapterSnapshot, AddressFetcher, FetchError};
 use crate::time::Clock;
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
 /// Mock clock for testing that returns controlled time values.

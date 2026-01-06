@@ -122,4 +122,3 @@ where
         PollingStream::new(self.fetcher, self.clock, self.interval, self.debounce)
     }
 }
-
