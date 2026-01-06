@@ -20,7 +20,7 @@ flowchart TB
     
     subgraph data [Data Layer]
         Fetcher[AddressFetcher Trait]
-        Filter[AdapterFilter Trait]
+        Filter[AdapterFilter Trait ✅]
     end
     
     subgraph monitor [Monitor Layer]
@@ -240,7 +240,7 @@ impl ValidatedConfig {
 | poller | PollingMonitor + PollingStream | ✅ | monitor-core |
 | windows-listener | WindowsApiListener (NotifyIpInterfaceChange) | ✅ | windows-fetch, monitor-core |
 | hybrid | HybridMonitor + HybridStream | ✅ | poller, windows-listener |
-| filter | AdapterFilter trait + CompositeFilter | ⬜ | - |
+| filter | AdapterFilter trait + CompositeFilter + FilteredFetcher | ✅ | - |
 | webhook-http | HttpRequest/HttpResponse/HttpClient/HttpError/ReqwestClient | ⬜ | - |
 | webhook-sender | WebhookSender/HttpWebhook/RetryPolicy | ⬜ | webhook-http |
 | config | TOML + CLI 合并 + init 命令 | ⬜ | - |

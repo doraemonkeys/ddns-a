@@ -9,6 +9,7 @@
 | Module | Purpose |
 |--------|---------|
 | `network` | `AdapterSnapshot`, `AdapterKind`, `IpVersion`; `AddressFetcher` trait for platform-agnostic adapter info retrieval; `FetchError` variants |
+| `network::filter` | `AdapterFilter` trait for filtering adapters; `NameRegexFilter`, `ExcludeVirtualFilter`, `ExcludeLoopbackFilter` concrete filters; `CompositeFilter` for AND composition; `FilteredFetcher` decorator |
 | `network::platform` | Platform-specific implementations; `WindowsFetcher` on Windows using `GetAdaptersAddresses` |
 | `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `HybridMonitor`, `HybridStream` for combined API+polling monitoring; `ApiListener` trait for platform event notifications; `MonitorError`, `ApiError` for layered error handling |
 | `monitor::platform` | Platform-specific listeners; `WindowsApiListener` on Windows using `NotifyIpInterfaceChange` |
@@ -26,6 +27,18 @@ AddressFetcher trait { fetch() -> Result<Vec<AdapterSnapshot>, FetchError> }  //
 FetchError::WindowsApi(windows::core::Error)  // #[cfg(windows)]
           | PermissionDenied { context }
           | Platform { message }
+
+// Adapter filtering
+AdapterFilter trait { fn matches(&self, adapter: &AdapterSnapshot) -> bool }  // Send + Sync
+FilterMode::Include | Exclude  // For name-based filtering
+NameRegexFilter { pattern: Regex, mode: FilterMode }  // Filter by name regex
+  // Factory: include(pattern), exclude(pattern)
+ExcludeVirtualFilter  // Excludes virtual adapters (VMware, VirtualBox, etc.)
+ExcludeLoopbackFilter  // Excludes loopback adapters
+CompositeFilter { filters: Vec<Box<dyn AdapterFilter>> }  // AND composition
+  // Builder: new(), with(filter); matches all if empty
+FilteredFetcher<F, A> { inner: F, filter: A }  // Decorator for AddressFetcher
+  // Implements AddressFetcher, filters results via filter.matches()
 
 // Platform implementations
 WindowsFetcher::new()  // Windows only, uses GetAdaptersAddresses API; Default trait
