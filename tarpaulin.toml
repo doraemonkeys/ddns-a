@@ -108,8 +108,7 @@ packages = []
 exclude = []
 
 # List of file paths to exclude from testing.
-# main.rs excluded until proper implementation (placeholder code)
-exclude-files = ["tests/data/*", "src/main.rs"]
+exclude-files = ["tests/data/*"]
 
 # List of file paths to include (and exclude all others) from testing.
 include-files = []
