@@ -84,6 +84,9 @@ pub struct MonitorSection {
     /// Disable API event listening, use polling only
     #[serde(default)]
     pub poll_only: bool,
+
+    /// Path to state file for detecting changes across restarts
+    pub state_file: Option<String>,
 }
 
 /// Retry policy configuration section.
@@ -174,6 +177,11 @@ poll_interval = 60
 
 # Disable API event listening, use polling only
 # poll_only = false
+
+# Path to state file for detecting changes across restarts
+# If set, the program will compare current IP addresses with the saved state
+# and trigger webhooks for any changes detected during the program restart
+# state_file = "ddns-a-state.json"
 
 [retry]
 # Maximum number of retry attempts (default: 3)

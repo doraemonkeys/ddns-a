@@ -3,16 +3,22 @@
 //! This module contains the main async execution loop that monitors
 //! IP address changes and sends webhook notifications.
 
-use ddns_a::config::ValidatedConfig;
-use ddns_a::monitor::{DebouncePolicy, HybridMonitor, IpChange, PollingMonitor, filter_by_version};
-use ddns_a::network::IpVersion;
-use ddns_a::network::filter::{CompositeFilter, FilteredFetcher};
-use ddns_a::network::platform::PlatformFetcher;
-use ddns_a::webhook::{HttpWebhook, ReqwestClient, WebhookSender};
-use std::time::Duration;
+use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
+
 use thiserror::Error;
 use tokio::signal;
 use tokio_stream::StreamExt;
+
+use ddns_a::config::ValidatedConfig;
+use ddns_a::monitor::{
+    DebouncePolicy, HybridMonitor, IpChange, PollingMonitor, diff, filter_by_version,
+};
+use ddns_a::network::filter::{CompositeFilter, FilteredFetcher};
+use ddns_a::network::platform::PlatformFetcher;
+use ddns_a::network::{AdapterSnapshot, AddressFetcher, IpVersion};
+use ddns_a::state::{FileStateStore, LoadResult, StateStore};
+use ddns_a::webhook::{HttpWebhook, ReqwestClient, WebhookSender};
 
 /// Type alias for the application's filtered fetcher.
 type AppFetcher = FilteredFetcher<PlatformFetcher, CompositeFilter>;
@@ -34,6 +40,14 @@ pub enum RunError {
     /// Unexpected stream termination.
     #[error("Monitor stream terminated unexpectedly")]
     StreamTerminated,
+
+    /// Failed to fetch initial network state.
+    #[error("Failed to fetch initial network state: {0}")]
+    InitialFetch(#[source] ddns_a::network::FetchError),
+
+    /// Failed to save state file.
+    #[error("Failed to save state: {0}")]
+    StateSave(#[source] ddns_a::state::StateError),
 }
 
 /// Runtime options extracted from validated config.
@@ -45,6 +59,7 @@ struct RuntimeOptions {
     poll_interval: Duration,
     poll_only: bool,
     dry_run: bool,
+    state_file: Option<PathBuf>,
 }
 
 impl From<&ValidatedConfig> for RuntimeOptions {
@@ -54,6 +69,7 @@ impl From<&ValidatedConfig> for RuntimeOptions {
             poll_interval: config.poll_interval,
             poll_only: config.poll_only,
             dry_run: config.dry_run,
+            state_file: config.state_file.clone(),
         }
     }
 }
@@ -62,15 +78,17 @@ impl From<&ValidatedConfig> for RuntimeOptions {
 ///
 /// This function:
 /// 1. Creates the network fetcher with configured filters
-/// 2. Creates the monitor (hybrid or polling-only based on config)
-/// 3. Creates the webhook sender
-/// 4. Runs the monitoring loop until shutdown signal (Ctrl+C)
+/// 2. Detects startup changes (if state file is configured)
+/// 3. Creates the monitor (hybrid or polling-only based on config)
+/// 4. Creates the webhook sender
+/// 5. Runs the monitoring loop until shutdown signal (Ctrl+C)
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - The API listener fails to initialize (in hybrid mode)
 /// - The monitor stream terminates unexpectedly
+/// - Failed to fetch initial network state (when state file is configured)
 ///
 /// # Coverage Note
 ///
@@ -93,18 +111,101 @@ pub async fn execute(config: ValidatedConfig) -> Result<(), RunError> {
         tracing::info!("Dry-run mode enabled - webhook requests will be logged but not sent");
     }
 
+    // Create state store if configured
+    let state_store = options.state_file.as_ref().map(FileStateStore::new);
+
+    // Perform startup change detection if state file is configured
+    if let Some(ref store) = state_store {
+        tracing::info!("State persistence enabled: {}", store.path().display());
+        startup_change_detection(store, &fetcher, &webhook, &options).await?;
+    }
+
     if options.poll_only {
         tracing::info!(
             "Polling-only mode enabled (interval: {}s)",
             options.poll_interval.as_secs()
         );
-        run_polling_loop(fetcher, webhook, options).await
+        run_polling_loop(fetcher, webhook, options, state_store).await
     } else {
         tracing::info!(
             "Hybrid mode enabled (API events + polling every {}s)",
             options.poll_interval.as_secs()
         );
-        run_hybrid_loop(fetcher, webhook, options).await
+        run_hybrid_loop(fetcher, webhook, options, state_store).await
+    }
+}
+
+/// Detects and handles IP changes that occurred while the program was stopped.
+///
+/// Compares the current network state with the previously saved state.
+/// If changes are detected, sends a webhook notification.
+///
+/// Excluded from coverage - requires platform APIs.
+#[cfg(not(tarpaulin_include))]
+async fn startup_change_detection<W: WebhookSender>(
+    store: &FileStateStore,
+    fetcher: &AppFetcher,
+    webhook: &W,
+    options: &RuntimeOptions,
+) -> Result<(), RunError> {
+    // Fetch current network state
+    let current = fetcher.fetch().map_err(RunError::InitialFetch)?;
+
+    // Compare with saved state
+    let startup_changes = detect_startup_changes(store, &current, options.ip_version);
+
+    // Handle any detected changes
+    if startup_changes.is_empty() {
+        tracing::debug!("No IP changes detected since last run");
+    } else {
+        tracing::info!(
+            "Detected {} change(s) since last run",
+            startup_changes.len()
+        );
+        handle_changes(&startup_changes, webhook, options.dry_run).await;
+    }
+
+    // Save current state (optimistic save - before webhook result matters)
+    // This ensures the state reflects the actual current IPs
+    if let Err(e) = store.save(&current).await {
+        tracing::error!("Failed to save state: {e}");
+        return Err(RunError::StateSave(e));
+    }
+
+    Ok(())
+}
+
+/// Compares current network state with saved state and returns changes.
+fn detect_startup_changes(
+    store: &impl StateStore,
+    current: &[AdapterSnapshot],
+    ip_version: IpVersion,
+) -> Vec<IpChange> {
+    detect_startup_changes_with_timestamp(store, current, ip_version, SystemTime::now())
+}
+
+/// Compares current network state with saved state and returns changes.
+///
+/// This variant accepts a timestamp for testability.
+fn detect_startup_changes_with_timestamp(
+    store: &impl StateStore,
+    current: &[AdapterSnapshot],
+    ip_version: IpVersion,
+    timestamp: SystemTime,
+) -> Vec<IpChange> {
+    match store.load() {
+        LoadResult::Loaded(saved) => {
+            let changes = diff(&saved, current, timestamp);
+            filter_by_version(changes, ip_version)
+        }
+        LoadResult::NotFound => {
+            tracing::info!("No previous state found, starting fresh");
+            vec![]
+        }
+        LoadResult::Corrupted { reason } => {
+            tracing::warn!("State file corrupted ({reason}), will overwrite on next save");
+            vec![]
+        }
     }
 }
 
@@ -130,6 +231,7 @@ async fn run_polling_loop<W: WebhookSender>(
     fetcher: AppFetcher,
     webhook: W,
     options: RuntimeOptions,
+    state_store: Option<FileStateStore>,
 ) -> Result<(), RunError> {
     let monitor = PollingMonitor::new(fetcher, options.poll_interval)
         .with_debounce(DebouncePolicy::default());
@@ -153,6 +255,7 @@ async fn run_polling_loop<W: WebhookSender>(
                         // Filter by IP version before processing
                         let filtered = filter_by_version(changes, options.ip_version);
                         if !filtered.is_empty() {
+                            save_state_if_configured(state_store.as_ref(), stream.current_snapshot()).await;
                             handle_changes(&filtered, &webhook, options.dry_run).await;
                         }
                     }
@@ -166,6 +269,22 @@ async fn run_polling_loop<W: WebhookSender>(
     }
 }
 
+/// Saves state to the store if configured.
+///
+/// Uses optimistic save strategy: state is saved before webhook delivery.
+/// This ensures the state reflects actual current IPs regardless of webhook success.
+/// On restart, previously notified changes won't re-trigger (by design).
+async fn save_state_if_configured(
+    store: Option<&FileStateStore>,
+    snapshot: Option<&[AdapterSnapshot]>,
+) {
+    if let (Some(store), Some(snapshot)) = (store, snapshot) {
+        if let Err(e) = store.save(snapshot).await {
+            tracing::error!("Failed to save state: {e}");
+        }
+    }
+}
+
 /// Runs the hybrid (API + polling) monitoring loop.
 ///
 /// Excluded from coverage - requires Windows API and signal handling.
@@ -175,6 +294,7 @@ async fn run_hybrid_loop<W: WebhookSender>(
     fetcher: AppFetcher,
     webhook: W,
     options: RuntimeOptions,
+    state_store: Option<FileStateStore>,
 ) -> Result<(), RunError> {
     let listener = PlatformListener::new().map_err(RunError::ApiListenerCreation)?;
 
@@ -209,6 +329,7 @@ async fn run_hybrid_loop<W: WebhookSender>(
                         // Filter by IP version before processing
                         let filtered = filter_by_version(changes, options.ip_version);
                         if !filtered.is_empty() {
+                            save_state_if_configured(state_store.as_ref(), stream.current_snapshot()).await;
                             handle_changes(&filtered, &webhook, options.dry_run).await;
                         }
                     }
@@ -231,10 +352,11 @@ async fn run_hybrid_loop<W: WebhookSender>(
     fetcher: AppFetcher,
     webhook: W,
     options: RuntimeOptions,
+    state_store: Option<FileStateStore>,
 ) -> Result<(), RunError> {
     // On non-Windows platforms, fall back to polling-only
     tracing::warn!("API listener not supported on this platform, using polling-only mode");
-    run_polling_loop(fetcher, webhook, options).await
+    run_polling_loop(fetcher, webhook, options, state_store).await
 }
 
 /// Handles a batch of IP changes.

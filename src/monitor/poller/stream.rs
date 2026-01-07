@@ -52,6 +52,14 @@ where
         }
     }
 
+    /// Returns the current (most recent) snapshot of network adapters.
+    ///
+    /// Returns `None` if no snapshot has been taken yet (before the first poll).
+    #[must_use]
+    pub fn current_snapshot(&self) -> Option<&[AdapterSnapshot]> {
+        self.prev_snapshot.as_deref()
+    }
+
     /// Performs a single poll and returns changes if any.
     fn poll_once(&mut self) -> Result<Vec<IpChange>, FetchError> {
         let current = self.fetcher.fetch()?;

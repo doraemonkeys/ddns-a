@@ -75,6 +75,10 @@ pub struct Cli {
     #[arg(long, short)]
     pub config: Option<PathBuf>,
 
+    /// Path to state file for detecting changes across restarts
+    #[arg(long = "state-file")]
+    pub state_file: Option<PathBuf>,
+
     /// Test mode - log changes without sending webhooks
     #[arg(long)]
     pub dry_run: bool,

@@ -108,6 +108,14 @@ where
         matches!(self.state, StreamState::PollingOnly)
     }
 
+    /// Returns the current (most recent) snapshot of network adapters.
+    ///
+    /// Returns `None` if no snapshot has been taken yet (before the first fetch).
+    #[must_use]
+    pub fn current_snapshot(&self) -> Option<&[AdapterSnapshot]> {
+        self.prev_snapshot.as_deref()
+    }
+
     /// Performs a single fetch and returns changes if any.
     fn fetch_changes(&mut self) -> Result<Vec<IpChange>, FetchError> {
         let current = self.fetcher.fetch()?;

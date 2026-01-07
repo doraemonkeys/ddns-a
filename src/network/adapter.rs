@@ -3,13 +3,15 @@
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use serde::{Deserialize, Serialize};
+
 /// IP version to monitor (explicit specification required, no default).
 ///
 /// # Design Decision
 ///
 /// This enum requires explicit configuration to avoid hidden behavior.
 /// Users must consciously choose which IP version(s) to monitor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum IpVersion {
     /// Monitor IPv4 addresses only.
     V4,
@@ -47,7 +49,7 @@ impl fmt::Display for IpVersion {
 ///
 /// Used for logging, filtering, and debugging. The core logic does not
 /// depend on specific values, allowing platform-specific implementations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AdapterKind {
     /// Physical Ethernet adapter.
     Ethernet,
@@ -81,7 +83,7 @@ impl AdapterKind {
 ///
 /// Two snapshots are equal if they have the same name, kind, and addresses.
 /// Address order matters for equality comparison.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterSnapshot {
     /// The friendly name of the adapter (e.g., "Ethernet", "Wi-Fi").
     pub name: String,

@@ -147,6 +147,182 @@ mod create_webhook {
     }
 }
 
+mod detect_startup_changes {
+    use super::*;
+    use ddns_a::network::{AdapterKind, AdapterSnapshot, IpVersion};
+    use ddns_a::state::{LoadResult, StateError, StateStore};
+    use std::net::Ipv4Addr;
+    use std::time::SystemTime;
+
+    /// Local mock for testing `detect_startup_changes`.
+    struct MockStateStore {
+        load_result: LoadResult,
+    }
+
+    impl MockStateStore {
+        fn with_loaded(snapshots: Vec<AdapterSnapshot>) -> Self {
+            Self {
+                load_result: LoadResult::Loaded(snapshots),
+            }
+        }
+
+        fn not_found() -> Self {
+            Self {
+                load_result: LoadResult::NotFound,
+            }
+        }
+
+        fn corrupted(reason: impl Into<String>) -> Self {
+            Self {
+                load_result: LoadResult::Corrupted {
+                    reason: reason.into(),
+                },
+            }
+        }
+    }
+
+    impl StateStore for MockStateStore {
+        fn load(&self) -> LoadResult {
+            self.load_result.clone()
+        }
+
+        async fn save(&self, _snapshots: &[AdapterSnapshot]) -> Result<(), StateError> {
+            Ok(())
+        }
+    }
+
+    fn snapshot_with_ipv4(name: &str, ip: &str) -> AdapterSnapshot {
+        AdapterSnapshot::new(
+            name,
+            AdapterKind::Ethernet,
+            vec![ip.parse::<Ipv4Addr>().unwrap()],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn returns_empty_when_no_previous_state() {
+        let store = MockStateStore::not_found();
+        let current = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            IpVersion::Both,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn returns_empty_when_state_corrupted() {
+        let store = MockStateStore::corrupted("test corruption");
+        let current = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            IpVersion::Both,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn returns_empty_when_no_changes() {
+        let snapshots = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let store = MockStateStore::with_loaded(snapshots.clone());
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &snapshots,
+            IpVersion::Both,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn detects_added_address() {
+        let saved = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let current = vec![
+            snapshot_with_ipv4("eth0", "192.168.1.1"),
+            snapshot_with_ipv4("eth1", "10.0.0.1"),
+        ];
+        let store = MockStateStore::with_loaded(saved);
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            IpVersion::Both,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].is_added());
+        assert_eq!(changes[0].address.to_string(), "10.0.0.1");
+    }
+
+    #[test]
+    fn detects_removed_address() {
+        let saved = vec![
+            snapshot_with_ipv4("eth0", "192.168.1.1"),
+            snapshot_with_ipv4("eth1", "10.0.0.1"),
+        ];
+        let current = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let store = MockStateStore::with_loaded(saved);
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            IpVersion::Both,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].is_removed());
+        assert_eq!(changes[0].address.to_string(), "10.0.0.1");
+    }
+
+    #[test]
+    fn filters_by_ip_version() {
+        use std::net::Ipv6Addr;
+
+        let saved = vec![];
+        let current = vec![AdapterSnapshot::new(
+            "eth0",
+            AdapterKind::Ethernet,
+            vec!["192.168.1.1".parse::<Ipv4Addr>().unwrap()],
+            vec!["fe80::1".parse::<Ipv6Addr>().unwrap()],
+        )];
+        let store = MockStateStore::with_loaded(saved);
+
+        // V4 only
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            IpVersion::V4,
+            SystemTime::UNIX_EPOCH,
+        );
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].address.is_ipv4());
+
+        // V6 only
+        let store = MockStateStore::with_loaded(vec![]);
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            IpVersion::V6,
+            SystemTime::UNIX_EPOCH,
+        );
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].address.is_ipv6());
+    }
+}
+
 mod handle_changes {
     use super::*;
     use ddns_a::monitor::IpChange;

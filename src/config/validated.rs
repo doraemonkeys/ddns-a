@@ -4,7 +4,7 @@
 //! by the application. All validation is performed during construction.
 
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use handlebars::Handlebars;
@@ -61,6 +61,10 @@ pub struct ValidatedConfig {
     /// Retry policy for failed webhook requests
     pub retry_policy: RetryPolicy,
 
+    /// Path to state file for detecting changes across restarts.
+    /// If `None`, state persistence is disabled.
+    pub state_file: Option<PathBuf>,
+
     /// Dry-run mode (log changes without sending webhooks)
     pub dry_run: bool,
 
@@ -70,10 +74,15 @@ pub struct ValidatedConfig {
 
 impl fmt::Display for ValidatedConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let state_file_str = self
+            .state_file
+            .as_ref()
+            .map_or_else(|| "none".to_string(), |p| p.display().to_string());
+
         write!(
             f,
             "Config {{ url: {}, ip_version: {}, method: {}, poll_interval: {}s, poll_only: {}, \
-             retry: {}x/{}s, dry_run: {}, filters: {} }}",
+             retry: {}x/{}s, state_file: {}, dry_run: {}, filters: {} }}",
             self.url,
             self.ip_version,
             self.method,
@@ -81,6 +90,7 @@ impl fmt::Display for ValidatedConfig {
             self.poll_only,
             self.retry_policy.max_attempts,
             self.retry_policy.initial_delay.as_secs(),
+            state_file_str,
             self.dry_run,
             self.filter.len(),
         )
@@ -128,6 +138,9 @@ impl ValidatedConfig {
         // Build retry policy
         let retry_policy = Self::build_retry_policy(cli, toml)?;
 
+        // Resolve state file path (CLI takes precedence over TOML)
+        let state_file = Self::resolve_state_file(cli, toml);
+
         Ok(Self {
             ip_version,
             url,
@@ -138,6 +151,7 @@ impl ValidatedConfig {
             poll_interval,
             poll_only,
             retry_policy,
+            state_file,
             dry_run: cli.dry_run,
             verbose: cli.verbose,
         })
@@ -412,6 +426,16 @@ impl ValidatedConfig {
             .with_initial_delay(Duration::from_secs(initial_delay_secs))
             .with_max_delay(Duration::from_secs(max_delay_secs))
             .with_multiplier(multiplier))
+    }
+
+    fn resolve_state_file(cli: &Cli, toml: Option<&TomlConfig>) -> Option<PathBuf> {
+        // CLI takes precedence
+        if let Some(ref path) = cli.state_file {
+            return Some(path.clone());
+        }
+
+        // Fall back to TOML
+        toml.and_then(|t| t.monitor.state_file.as_ref().map(PathBuf::from))
     }
 }
 

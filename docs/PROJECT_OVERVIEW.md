@@ -14,9 +14,10 @@
 | `monitor` | `IpChange`, `diff()`; `DebouncePolicy`; `PollingMonitor`/`HybridMonitor`; `ApiListener` trait; `MonitorError`, `ApiError` |
 | `monitor::platform` | `WindowsApiListener` (Windows, `NotifyIpInterfaceChange`); `PlatformListener` alias |
 | `webhook` | `HttpRequest`, `HttpResponse`; `HttpClient` trait; `ReqwestClient`; `RetryPolicy`; `WebhookSender` trait, `HttpWebhook` |
+| `state` | `StateStore` trait; `FileStateStore`; `LoadResult` enum; `StateError` |
 | `time` | `Clock` trait, `SystemClock`; `Sleeper` trait, `TokioSleeper`, `InstantSleeper` |
 | `main` (bin) | Entry: CLI, config, tracing, tokio runtime |
-| `run` (bin) | `execute(ValidatedConfig)`: assembles components, graceful shutdown; `RunError` |
+| `run` (bin) | `execute(ValidatedConfig)`: assembles components, state persistence, graceful shutdown; `RunError` |
 
 ## Key Types
 
@@ -73,11 +74,20 @@ WebhookSender trait { async fn send(&self, changes: &[IpChange]) -> Result<(), W
 HttpWebhook<H, S>::new(client, url).with_method().with_headers().with_body_template().with_retry_policy()
 IsRetryable trait { fn is_retryable(&self) -> bool }
 
+// State Persistence (Optimistic Save Strategy)
+// State is saved BEFORE webhook delivery. On restart, previously notified
+// changes won't re-trigger. This ensures state reflects actual current IPs
+// regardless of webhook success, avoiding duplicate notifications.
+LoadResult::Loaded(Vec<AdapterSnapshot>) | NotFound | Corrupted { reason }
+StateError::Write | Serialize
+StateStore trait { fn load(&self) -> LoadResult; async fn save(&self, snapshots) -> Result<(), StateError> }
+FileStateStore::new(path).path().load().save()  // Atomic write with .tmp rename, auto-creates parent dirs
+
 // Config
-Cli { url, ip_version, method, headers, bearer, body_template, poll_interval, retry_* }
+Cli { url, ip_version, method, headers, bearer, body_template, poll_interval, retry_*, state_file }
 Command::Init { output }
 TomlConfig { webhook, filter, monitor, retry }  // load(path), parse(content)
-ValidatedConfig { ip_version, url, method, headers, filter, poll_interval, retry_* }
+ValidatedConfig { ip_version, url, method, headers, filter, poll_interval, retry_*, state_file }
   // from_raw(&Cli, Option<&TomlConfig>), load(&Cli)
   // Priority: CLI > TOML > defaults
 ConfigError::FileRead | TomlParse | MissingRequired | InvalidUrl | InvalidRegex | InvalidTemplate | ...

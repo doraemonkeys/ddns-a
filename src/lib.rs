@@ -6,5 +6,6 @@
 pub mod config;
 pub mod monitor;
 pub mod network;
+pub mod state;
 pub mod time;
 pub mod webhook;
