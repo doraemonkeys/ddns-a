@@ -5,6 +5,7 @@ A lightweight Dynamic DNS client for Windows that monitors IP address changes an
 ## Features
 
 - **Real-time monitoring** – Uses Windows API events with polling fallback
+- **State persistence** – Detects IP changes that occurred during program downtime
 - **Flexible filtering** – Include/exclude adapters by regex, skip virtual adapters
 - **Customizable webhooks** – Any HTTP method, headers, bearer auth, Handlebars templates
 - **Robust retry** – Exponential backoff with configurable limits
@@ -36,6 +37,9 @@ ddns-a --url https://api.example.com/ddns \
 # Test mode - log changes without sending webhooks
 ddns-a --url https://example.com/webhook --ip-version ipv6 --dry-run --verbose
 
+# With state persistence (detect changes across restarts)
+ddns-a --url https://example.com/webhook --ip-version ipv6 --state-file ddns-a-state.json
+
 # Generate config file
 ddns-a init
 ```
@@ -64,6 +68,7 @@ Filter:
 Monitor:
     --poll-interval <SEC>        Polling interval (default: 60)
     --poll-only                  Disable API events, polling only
+    --state-file <PATH>          State file for detecting changes across restarts
 
 Retry:
     --retry-max <N>              Max attempts (default: 3)
@@ -134,6 +139,7 @@ exclude_virtual = true
 [monitor]
 poll_interval = 60
 poll_only = false
+# state_file = "ddns-a-state.json"
 
 [retry]
 max_attempts = 3
@@ -164,10 +170,11 @@ Example:
 ## How It Works
 
 1. On startup, fetches current IP addresses from all (filtered) adapters
-2. Listens for Windows network change events via `NotifyIpInterfaceChange` API
-3. Falls back to pure polling if API events fail
-4. On IP change, sends webhook with retry on failure
-5. Uses debouncing to merge rapid changes (2s window)
+2. If `--state-file` is set, compares with saved state and triggers webhooks for changes during downtime
+3. Listens for Windows network change events via `NotifyIpInterfaceChange` API
+4. Falls back to pure polling if API events fail
+5. On IP change, sends webhook with retry on failure
+6. Uses debouncing to merge rapid changes (2s window)
 
 ## Platform Support
 
