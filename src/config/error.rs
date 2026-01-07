@@ -118,6 +118,16 @@ pub enum ConfigError {
     },
 }
 
+/// Well-known field names for `MissingRequired` errors.
+///
+/// Use these constants for compile-time safety when matching field names.
+pub mod field {
+    /// The webhook URL field.
+    pub const URL: &str = "url";
+    /// The IP version field.
+    pub const IP_VERSION: &str = "ip_version";
+}
+
 impl ConfigError {
     /// Creates a `MissingRequired` error for a required field.
     #[must_use]

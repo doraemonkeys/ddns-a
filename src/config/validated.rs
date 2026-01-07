@@ -18,9 +18,9 @@ use crate::network::filter::{
 };
 use crate::webhook::RetryPolicy;
 
-use super::ConfigError;
 use super::cli::Cli;
 use super::defaults;
+use super::error::{ConfigError, field};
 use super::toml::TomlConfig;
 
 /// Fully validated configuration ready for use by the application.
@@ -176,7 +176,7 @@ impl ValidatedConfig {
         }
 
         Err(ConfigError::missing(
-            "ip_version",
+            field::IP_VERSION,
             "Use --ip-version or set webhook.ip_version in config file",
         ))
     }
@@ -188,7 +188,7 @@ impl ValidatedConfig {
             .as_deref()
             .or_else(|| toml.and_then(|t| t.webhook.url.as_deref()))
             .ok_or_else(|| {
-                ConfigError::missing("url", "Use --url or set webhook.url in config file")
+                ConfigError::missing(field::URL, "Use --url or set webhook.url in config file")
             })?;
 
         Url::parse(url_str).map_err(|e| ConfigError::InvalidUrl {

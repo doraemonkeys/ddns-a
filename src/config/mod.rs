@@ -62,6 +62,6 @@ mod toml_tests;
 mod validated_tests;
 
 pub use cli::{Cli, Command, IpVersionArg};
-pub use error::ConfigError;
+pub use error::{ConfigError, field};
 pub use toml::{TomlConfig, default_config_template};
 pub use validated::{ValidatedConfig, write_default_config};

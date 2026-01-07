@@ -16,6 +16,8 @@
 | `monitor::platform` | Platform-specific listeners; `WindowsApiListener` on Windows using `NotifyIpInterfaceChange` |
 | `webhook` | `HttpRequest`, `HttpResponse` value types; `HttpClient` trait for HTTP abstraction; `HttpError`, `RetryableError`, `WebhookError` for layered error handling; `ReqwestClient` production HTTP client; `RetryPolicy` for exponential backoff; `WebhookSender` trait and `HttpWebhook` for sending IP changes with retries |
 | `time` | `Clock` trait for time abstraction; `SystemClock` production implementation |
+| `main` (bin) | Application entry point: CLI parsing, config loading, tracing setup, tokio runtime |
+| `run` (bin) | Async execution loop: `execute(ValidatedConfig)` assembles fetcher, monitor, webhook; graceful shutdown via Ctrl+C; `RunError` for runtime failures |
 
 ## Key Types
 
