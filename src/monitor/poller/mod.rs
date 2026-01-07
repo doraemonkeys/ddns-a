@@ -70,8 +70,8 @@ pub fn merge_changes(changes: &[IpChange], timestamp: std::time::SystemTime) -> 
 }
 
 #[cfg(test)]
-mod mod_test;
+mod mod_tests;
 #[cfg(test)]
-mod monitor_test;
+mod monitor_tests;
 #[cfg(test)]
-mod stream_test;
+mod stream_tests;

@@ -15,9 +15,9 @@ mod retry;
 mod sender;
 
 #[cfg(test)]
-mod client_test;
+mod client_tests;
 #[cfg(test)]
-mod http_test;
+mod http_tests;
 #[cfg(test)]
 mod retry_tests;
 #[cfg(test)]

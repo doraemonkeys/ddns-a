@@ -14,7 +14,7 @@ pub mod filter;
 pub mod platform;
 
 #[cfg(test)]
-mod filter_test;
+mod filter_tests;
 
 pub use adapter::{AdapterKind, AdapterSnapshot, IpVersion};
 pub use fetcher::{AddressFetcher, FetchError};

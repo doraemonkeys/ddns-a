@@ -11,8 +11,8 @@ pub use monitor::HybridMonitor;
 pub use stream::HybridStream;
 
 #[cfg(test)]
-mod monitor_test;
+mod monitor_tests;
 #[cfg(test)]
-mod stream_test;
+mod stream_tests;
 #[cfg(test)]
 mod test_fixtures;

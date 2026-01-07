@@ -1,5 +1,6 @@
 //! Core network types for adapter representation.
 
+use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 /// IP version to monitor (explicit specification required, no default).
@@ -29,6 +30,16 @@ impl IpVersion {
     #[must_use]
     pub const fn includes_v6(self) -> bool {
         matches!(self, Self::V6 | Self::Both)
+    }
+}
+
+impl fmt::Display for IpVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::V4 => write!(f, "IPv4"),
+            Self::V6 => write!(f, "IPv6"),
+            Self::Both => write!(f, "Both"),
+        }
     }
 }
 
@@ -135,6 +146,13 @@ mod tests {
         fn both_includes_both() {
             assert!(IpVersion::Both.includes_v4());
             assert!(IpVersion::Both.includes_v6());
+        }
+
+        #[test]
+        fn display_formats_correctly() {
+            assert_eq!(format!("{}", IpVersion::V4), "IPv4");
+            assert_eq!(format!("{}", IpVersion::V6), "IPv6");
+            assert_eq!(format!("{}", IpVersion::Both), "Both");
         }
     }
 

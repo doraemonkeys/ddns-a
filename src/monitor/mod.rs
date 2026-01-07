@@ -18,7 +18,7 @@ pub mod platform;
 mod poller;
 
 #[cfg(test)]
-mod poller_test;
+mod poller_tests;
 
 pub use change::{IpChange, IpChangeKind, diff};
 pub use debounce::DebouncePolicy;

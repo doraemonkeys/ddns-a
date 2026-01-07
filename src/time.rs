@@ -1,9 +1,10 @@
 //! Time abstraction for testability.
 //!
 //! This module provides a [`Clock`] trait that allows injecting mock clocks
-//! in tests while using the real system clock in production.
+//! in tests while using the real system clock in production, and a [`Sleeper`]
+//! trait for injectable async delays.
 
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 /// Abstraction over system time for testability.
 ///
@@ -34,6 +35,52 @@ pub struct SystemClock;
 impl Clock for SystemClock {
     fn now(&self) -> SystemTime {
         SystemTime::now()
+    }
+}
+
+/// Abstraction over async sleep for testability.
+///
+/// Implementations provide async delay functionality, allowing tests to
+/// inject instant/mock sleeps instead of waiting for real time.
+///
+/// # Example
+///
+/// ```
+/// use ddns_a::time::{Sleeper, TokioSleeper};
+/// use std::time::Duration;
+///
+/// async fn example() {
+///     let sleeper = TokioSleeper;
+///     sleeper.sleep(Duration::from_millis(100)).await;
+/// }
+/// ```
+pub trait Sleeper: Send + Sync {
+    /// Sleeps for the specified duration.
+    fn sleep(&self, duration: Duration) -> impl std::future::Future<Output = ()> + Send;
+}
+
+/// Production sleeper using tokio's sleep.
+///
+/// This is the default sleeper implementation that delegates to
+/// [`tokio::time::sleep`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokioSleeper;
+
+impl Sleeper for TokioSleeper {
+    async fn sleep(&self, duration: Duration) {
+        tokio::time::sleep(duration).await;
+    }
+}
+
+/// Mock sleeper that returns immediately without waiting.
+///
+/// Useful for testing retry logic without actual delays.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct InstantSleeper;
+
+impl Sleeper for InstantSleeper {
+    async fn sleep(&self, _duration: Duration) {
+        // Return immediately - no actual sleep
     }
 }
 
@@ -131,5 +178,63 @@ mod tests {
     fn mock_clock_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<MockClock>();
+    }
+
+    // Sleeper tests
+
+    #[tokio::test]
+    async fn tokio_sleeper_completes() {
+        let sleeper = TokioSleeper;
+        // Very short sleep to verify it works
+        sleeper.sleep(Duration::from_millis(1)).await;
+    }
+
+    #[test]
+    fn tokio_sleeper_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<TokioSleeper>();
+    }
+
+    #[test]
+    fn tokio_sleeper_is_default() {
+        assert_default::<TokioSleeper>();
+    }
+
+    #[test]
+    fn tokio_sleeper_is_copy() {
+        let sleeper1 = TokioSleeper;
+        let sleeper2 = sleeper1;
+        // Both are usable (Copy semantics)
+        let _ = sleeper1;
+        let _ = sleeper2;
+    }
+
+    #[tokio::test]
+    async fn instant_sleeper_returns_immediately() {
+        let sleeper = InstantSleeper;
+        let start = std::time::Instant::now();
+        sleeper.sleep(Duration::from_secs(1000)).await;
+        // Should complete almost instantly
+        assert!(start.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn instant_sleeper_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<InstantSleeper>();
+    }
+
+    #[test]
+    fn instant_sleeper_is_default() {
+        assert_default::<InstantSleeper>();
+    }
+
+    #[test]
+    fn instant_sleeper_is_copy() {
+        let sleeper1 = InstantSleeper;
+        let sleeper2 = sleeper1;
+        // Both are usable (Copy semantics)
+        let _ = sleeper1;
+        let _ = sleeper2;
     }
 }
