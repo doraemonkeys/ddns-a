@@ -82,6 +82,13 @@ mod runtime_options {
         assert!(!options.dry_run);
         assert_eq!(options.poll_interval, std::time::Duration::from_secs(60));
     }
+
+    #[test]
+    fn from_config_extracts_ip_version() {
+        let config = make_test_config();
+        let options = RuntimeOptions::from(&config);
+        assert_eq!(options.ip_version, ddns_a::network::IpVersion::V4);
+    }
 }
 
 mod create_webhook {

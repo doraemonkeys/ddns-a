@@ -51,8 +51,9 @@ PlatformFetcher        // Type alias for WindowsFetcher on Windows
 // Monitor types
 IpChangeKind::Added | Removed
 IpChange { adapter, address: IpAddr, timestamp: SystemTime, kind }
-  // Methods: new(), added(), removed(), is_added(), is_removed()
+  // Methods: new(), added(), removed(), is_added(), is_removed(), is_ipv4(), is_ipv6(), matches_version(IpVersion)
 diff(&old, &new, timestamp) -> Vec<IpChange>  // Pure function for change detection
+filter_by_version(changes, version) -> Vec<IpChange>  // Filter changes by IP version (V4/V6/Both)
 DebouncePolicy::new(window), window() -> Duration  // Default: 2 seconds
 PollingMonitor<F, C = SystemClock>  // Builder: new(), with_clock(), with_debounce()
   // Methods: interval(), debounce(), into_stream()

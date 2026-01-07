@@ -4,7 +4,8 @@
 //! IP address changes and sends webhook notifications.
 
 use ddns_a::config::ValidatedConfig;
-use ddns_a::monitor::{DebouncePolicy, HybridMonitor, IpChange, PollingMonitor};
+use ddns_a::monitor::{DebouncePolicy, HybridMonitor, IpChange, PollingMonitor, filter_by_version};
+use ddns_a::network::IpVersion;
 use ddns_a::network::filter::{CompositeFilter, FilteredFetcher};
 use ddns_a::network::platform::PlatformFetcher;
 use ddns_a::webhook::{HttpWebhook, ReqwestClient, WebhookSender};
@@ -40,6 +41,7 @@ pub enum RunError {
 /// This struct holds only the fields needed for the monitoring loop,
 /// allowing the config's `filter` field to be moved separately.
 struct RuntimeOptions {
+    ip_version: IpVersion,
     poll_interval: Duration,
     poll_only: bool,
     dry_run: bool,
@@ -48,6 +50,7 @@ struct RuntimeOptions {
 impl From<&ValidatedConfig> for RuntimeOptions {
     fn from(config: &ValidatedConfig) -> Self {
         Self {
+            ip_version: config.ip_version,
             poll_interval: config.poll_interval,
             poll_only: config.poll_only,
             dry_run: config.dry_run,
@@ -146,11 +149,12 @@ async fn run_polling_loop<W: WebhookSender>(
 
             changes = stream.next() => {
                 match changes {
-                    Some(changes) if !changes.is_empty() => {
-                        handle_changes(&changes, &webhook, options.dry_run).await;
-                    }
-                    Some(_) => {
-                        // Empty changes batch - continue
+                    Some(changes) => {
+                        // Filter by IP version before processing
+                        let filtered = filter_by_version(changes, options.ip_version);
+                        if !filtered.is_empty() {
+                            handle_changes(&filtered, &webhook, options.dry_run).await;
+                        }
                     }
                     None => {
                         // Stream ended unexpectedly
@@ -201,11 +205,12 @@ async fn run_hybrid_loop<W: WebhookSender>(
                 }
 
                 match changes {
-                    Some(changes) if !changes.is_empty() => {
-                        handle_changes(&changes, &webhook, options.dry_run).await;
-                    }
-                    Some(_) => {
-                        // Empty changes batch - continue
+                    Some(changes) => {
+                        // Filter by IP version before processing
+                        let filtered = filter_by_version(changes, options.ip_version);
+                        if !filtered.is_empty() {
+                            handle_changes(&filtered, &webhook, options.dry_run).await;
+                        }
                     }
                     None => {
                         // Stream ended unexpectedly

@@ -1,6 +1,6 @@
 //! IP change detection types and functions.
 
-use crate::network::AdapterSnapshot;
+use crate::network::{AdapterSnapshot, IpVersion};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::SystemTime;
@@ -68,6 +68,50 @@ impl IpChange {
     #[must_use]
     pub const fn is_removed(&self) -> bool {
         matches!(self.kind, IpChangeKind::Removed)
+    }
+
+    /// Returns true if this change involves an IPv4 address.
+    #[must_use]
+    pub const fn is_ipv4(&self) -> bool {
+        self.address.is_ipv4()
+    }
+
+    /// Returns true if this change involves an IPv6 address.
+    #[must_use]
+    pub const fn is_ipv6(&self) -> bool {
+        self.address.is_ipv6()
+    }
+
+    /// Returns true if this change matches the specified IP version filter.
+    #[must_use]
+    pub const fn matches_version(&self, version: IpVersion) -> bool {
+        match version {
+            IpVersion::V4 => self.address.is_ipv4(),
+            IpVersion::V6 => self.address.is_ipv6(),
+            IpVersion::Both => true,
+        }
+    }
+}
+
+/// Filters IP changes by the specified IP version.
+///
+/// Returns only changes that match the specified version:
+/// - `V4`: only IPv4 changes
+/// - `V6`: only IPv6 changes
+/// - `Both`: all changes (no filtering)
+///
+/// # Arguments
+///
+/// * `changes` - The changes to filter
+/// * `version` - The IP version filter to apply
+#[must_use]
+pub fn filter_by_version(changes: Vec<IpChange>, version: IpVersion) -> Vec<IpChange> {
+    match version {
+        IpVersion::Both => changes,
+        IpVersion::V4 | IpVersion::V6 => changes
+            .into_iter()
+            .filter(|c| c.matches_version(version))
+            .collect(),
     }
 }
 
@@ -574,6 +618,135 @@ mod tests {
 
             assert_eq!(removed_count, 2);
             assert_eq!(added_count, 2);
+        }
+    }
+
+    mod filter_by_version_function {
+        use super::*;
+
+        fn make_ipv4_change(addr: &str) -> IpChange {
+            let address: IpAddr = addr.parse().unwrap();
+            debug_assert!(address.is_ipv4(), "Expected IPv4 address");
+            IpChange::added("eth0", address, timestamp())
+        }
+
+        fn make_ipv6_change(addr: &str) -> IpChange {
+            let address: IpAddr = addr.parse().unwrap();
+            debug_assert!(address.is_ipv6(), "Expected IPv6 address");
+            IpChange::added("eth0", address, timestamp())
+        }
+
+        #[test]
+        fn v4_filter_keeps_only_ipv4() {
+            let changes = vec![
+                make_ipv4_change("192.168.1.1"),
+                make_ipv6_change("fe80::1"),
+                make_ipv4_change("10.0.0.1"),
+            ];
+
+            let filtered = filter_by_version(changes, IpVersion::V4);
+
+            assert_eq!(filtered.len(), 2);
+            assert!(filtered.iter().all(IpChange::is_ipv4));
+        }
+
+        #[test]
+        fn v6_filter_keeps_only_ipv6() {
+            let changes = vec![
+                make_ipv4_change("192.168.1.1"),
+                make_ipv6_change("fe80::1"),
+                make_ipv6_change("2001:db8::1"),
+            ];
+
+            let filtered = filter_by_version(changes, IpVersion::V6);
+
+            assert_eq!(filtered.len(), 2);
+            assert!(filtered.iter().all(IpChange::is_ipv6));
+        }
+
+        #[test]
+        fn both_filter_keeps_all() {
+            let changes = vec![
+                make_ipv4_change("192.168.1.1"),
+                make_ipv6_change("fe80::1"),
+                make_ipv4_change("10.0.0.1"),
+            ];
+
+            let filtered = filter_by_version(changes, IpVersion::Both);
+
+            assert_eq!(filtered.len(), 3);
+        }
+
+        #[test]
+        fn empty_input_returns_empty() {
+            let changes: Vec<IpChange> = vec![];
+
+            let filtered = filter_by_version(changes, IpVersion::V4);
+
+            assert!(filtered.is_empty());
+        }
+
+        #[test]
+        fn v4_filter_on_all_ipv6_returns_empty() {
+            let changes = vec![make_ipv6_change("fe80::1"), make_ipv6_change("2001:db8::1")];
+
+            let filtered = filter_by_version(changes, IpVersion::V4);
+
+            assert!(filtered.is_empty());
+        }
+
+        #[test]
+        fn v6_filter_on_all_ipv4_returns_empty() {
+            let changes = vec![
+                make_ipv4_change("192.168.1.1"),
+                make_ipv4_change("10.0.0.1"),
+            ];
+
+            let filtered = filter_by_version(changes, IpVersion::V6);
+
+            assert!(filtered.is_empty());
+        }
+    }
+
+    mod ip_change_version_methods {
+        use super::*;
+
+        #[test]
+        fn is_ipv4_returns_true_for_ipv4() {
+            let addr: IpAddr = "192.168.1.1".parse().unwrap();
+            let change = IpChange::added("eth0", addr, timestamp());
+
+            assert!(change.is_ipv4());
+            assert!(!change.is_ipv6());
+        }
+
+        #[test]
+        fn is_ipv6_returns_true_for_ipv6() {
+            let addr: IpAddr = "fe80::1".parse().unwrap();
+            let change = IpChange::added("eth0", addr, timestamp());
+
+            assert!(change.is_ipv6());
+            assert!(!change.is_ipv4());
+        }
+
+        #[test]
+        fn matches_version_v4_for_ipv4() {
+            let addr: IpAddr = "192.168.1.1".parse().unwrap();
+            let change = IpChange::added("eth0", addr, timestamp());
+
+            assert!(change.matches_version(IpVersion::V4));
+            assert!(!change.matches_version(IpVersion::V6));
+            assert!(change.matches_version(IpVersion::Both));
+        }
+
+        #[test]
+        fn matches_version_v6_for_ipv6() {
+            let addr: IpAddr = "fe80::1".parse().unwrap();
+            let change = IpChange::added("eth0", addr, timestamp());
+
+            assert!(!change.matches_version(IpVersion::V4));
+            assert!(change.matches_version(IpVersion::V6));
+            assert!(change.matches_version(IpVersion::Both));
         }
     }
 }

@@ -20,7 +20,7 @@ mod poller;
 #[cfg(test)]
 mod poller_tests;
 
-pub use change::{IpChange, IpChangeKind, diff};
+pub use change::{IpChange, IpChangeKind, diff, filter_by_version};
 pub use debounce::DebouncePolicy;
 pub use error::{ApiError, MonitorError};
 pub use hybrid::{HybridMonitor, HybridStream};
