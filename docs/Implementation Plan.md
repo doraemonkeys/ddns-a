@@ -30,7 +30,7 @@ flowchart TB
     end
     
     subgraph action [Action Layer]
-        HttpClient[HttpClient Trait]
+        HttpClient[HttpClient Trait ✅]
         Sender[WebhookSender Trait]
         Retry[RetryPolicy]
     end
@@ -241,7 +241,7 @@ impl ValidatedConfig {
 | windows-listener | WindowsApiListener (NotifyIpInterfaceChange) | ✅ | windows-fetch, monitor-core |
 | hybrid | HybridMonitor + HybridStream | ✅ | poller, windows-listener |
 | filter | AdapterFilter trait + CompositeFilter + FilteredFetcher | ✅ | - |
-| webhook-http | HttpRequest/HttpResponse/HttpClient/HttpError/ReqwestClient | ⬜ | - |
+| webhook-http | HttpRequest/HttpResponse/HttpClient/HttpError/ReqwestClient | ✅ | - |
 | webhook-sender | WebhookSender/HttpWebhook/RetryPolicy | ⬜ | webhook-http |
 | config | TOML + CLI 合并 + init 命令 | ⬜ | - |
 | main | 入口组装 + 配置摘要 + graceful shutdown | ⬜ | all |

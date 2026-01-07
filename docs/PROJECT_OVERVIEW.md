@@ -13,6 +13,7 @@
 | `network::platform` | Platform-specific implementations; `WindowsFetcher` on Windows using `GetAdaptersAddresses` |
 | `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `HybridMonitor`, `HybridStream` for combined API+polling monitoring; `ApiListener` trait for platform event notifications; `MonitorError`, `ApiError` for layered error handling |
 | `monitor::platform` | Platform-specific listeners; `WindowsApiListener` on Windows using `NotifyIpInterfaceChange` |
+| `webhook` | `HttpRequest`, `HttpResponse` value types; `HttpClient` trait for HTTP abstraction; `HttpError` for network failures; `ReqwestClient` production implementation |
 | `time` | `Clock` trait for time abstraction; `SystemClock` production implementation |
 
 ## Key Types
@@ -76,4 +77,17 @@ ApiError::WindowsApi(windows::core::Error)  // #[cfg(windows)]
        | Stopped
 MonitorError::Fetch(FetchError)
            | ApiListenerFailed(#[source] ApiError)
+
+// HTTP client abstraction
+HttpRequest { method: http::Method, url: url::Url, headers: http::HeaderMap, body: Option<Vec<u8>> }
+  // Constructors: new(method, url), get(url), post(url)
+  // Builder: with_body(Vec<u8>), with_header(name, value)
+HttpResponse { status: http::StatusCode, headers: http::HeaderMap, body: Vec<u8> }
+  // Methods: new(), is_success(), body_text() -> Option<&str>
+HttpClient trait { async fn request(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> }  // Send + Sync
+HttpError::Connection(Box<dyn Error + Send + Sync>)  // Network failures
+        | Timeout                                    // Request timed out
+        | InvalidUrl(String)                         // Configuration error
+ReqwestClient { inner: reqwest::Client }  // Production impl
+  // Factory: new(), default(), from_client(reqwest::Client)
 ```
