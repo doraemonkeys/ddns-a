@@ -39,6 +39,18 @@ enum PollTrigger {
     Pending,
 }
 
+impl PollTrigger {
+    /// Returns a human-readable label for logging.
+    const fn label(&self) -> &'static str {
+        match self {
+            Self::ApiEvent => "API event",
+            Self::ApiDegraded => "API degradation",
+            Self::Interval => "polling interval",
+            Self::Pending => "pending",
+        }
+    }
+}
+
 /// A stream of IP address changes produced by hybrid monitoring.
 ///
 /// This type is returned by [`super::HybridMonitor::into_stream`] and yields
@@ -223,6 +235,8 @@ where
                     // Continue loop to check interval
                 }
                 PollTrigger::ApiEvent | PollTrigger::Interval => {
+                    tracing::debug!("Check triggered by {}", trigger.label());
+
                     // Capture snapshot BEFORE fetch (needed for debounce baseline)
                     // Only clone when we might start debouncing
                     let pre_fetch_snapshot =
@@ -239,6 +253,11 @@ where
                     };
 
                     if let Some(result) = self.process_with_debounce(changes, pre_fetch_snapshot) {
+                        tracing::debug!(
+                            "Emitting {} change(s) triggered by {}",
+                            result.len(),
+                            trigger.label()
+                        );
                         return Poll::Ready(Some(result));
                     }
                     // No changes to emit - loop back to wait for next trigger
