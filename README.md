@@ -38,7 +38,7 @@ ddns-a --url https://api.example.com/ddns \
 ddns-a --url https://example.com/webhook --ip-version ipv6 --dry-run --verbose
 
 # With state persistence (detect changes across restarts)
-ddns-a --url https://example.com/webhook --ip-version ipv6 --state-file ddns-a-state.json
+ddns-a --url https://example.com/webhook --ip-version ipv6 --state-file ~/.ddns-a/state.json
 
 # Generate config file
 ddns-a init

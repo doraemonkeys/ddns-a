@@ -42,6 +42,9 @@ thiserror = "2"
 # Name filtering (regex patterns)
 regex = "1"
 
+# Home directory resolution (tilde expansion)
+dirs = "6"
+
 # Template rendering (optional feature)
 handlebars = "6"
 

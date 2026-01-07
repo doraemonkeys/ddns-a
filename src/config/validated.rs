@@ -431,12 +431,51 @@ impl ValidatedConfig {
     fn resolve_state_file(cli: &Cli, toml: Option<&TomlConfig>) -> Option<PathBuf> {
         // CLI takes precedence
         if let Some(ref path) = cli.state_file {
-            return Some(path.clone());
+            return Some(expand_tilde(path));
         }
 
         // Fall back to TOML
-        toml.and_then(|t| t.monitor.state_file.as_ref().map(PathBuf::from))
+        toml.and_then(|t| {
+            t.monitor
+                .state_file
+                .as_ref()
+                .map(|s| expand_tilde(Path::new(s)))
+        })
     }
+}
+
+/// Expands tilde (`~`) at the start of a path to the user's home directory.
+///
+/// - `~/foo` → `<home>/foo`
+/// - `~` → `<home>`
+/// - Paths not starting with `~` are returned unchanged.
+fn expand_tilde(path: &Path) -> PathBuf {
+    let path_str = path.to_string_lossy();
+
+    // Check if path starts with ~ (tilde)
+    if !path_str.starts_with('~') {
+        return path.to_path_buf();
+    }
+
+    // Get home directory
+    let Some(home) = dirs::home_dir() else {
+        // Cannot determine home directory - return path unchanged
+        tracing::warn!("Cannot expand ~: home directory not found");
+        return path.to_path_buf();
+    };
+
+    // Handle bare ~ or ~/...
+    if path_str == "~" {
+        return home;
+    }
+
+    // Handle ~/path or ~\path (Windows)
+    if path_str.starts_with("~/") || path_str.starts_with("~\\") {
+        return home.join(&path_str[2..]);
+    }
+
+    // ~username style is not supported - return unchanged
+    path.to_path_buf()
 }
 
 /// Writes the default configuration template to a file.
@@ -494,4 +533,67 @@ fn parse_header_value(name: &str, value: &str) -> Result<HeaderValue, ConfigErro
         name: name.to_string(),
         reason: e.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tilde_tests {
+    use std::path::Path;
+
+    use super::expand_tilde;
+
+    #[test]
+    fn tilde_alone_expands_to_home() {
+        let result = expand_tilde(Path::new("~"));
+        let expected = dirs::home_dir().expect("home dir should exist");
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn tilde_slash_prefix_expands() {
+        let result = expand_tilde(Path::new("~/.ddns-a/state.json"));
+        let home = dirs::home_dir().expect("home dir should exist");
+        assert_eq!(result, home.join(".ddns-a/state.json"));
+    }
+
+    #[test]
+    fn tilde_backslash_prefix_expands() {
+        // Windows-style path separator
+        let result = expand_tilde(Path::new("~\\.ddns-a\\state.json"));
+        let home = dirs::home_dir().expect("home dir should exist");
+        assert_eq!(result, home.join(".ddns-a\\state.json"));
+    }
+
+    #[test]
+    fn absolute_path_unchanged() {
+        #[cfg(windows)]
+        let path = Path::new("C:\\Users\\test\\state.json");
+        #[cfg(not(windows))]
+        let path = Path::new("/home/test/state.json");
+
+        let result = expand_tilde(path);
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn relative_path_unchanged() {
+        let path = Path::new("./state.json");
+        let result = expand_tilde(path);
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn tilde_in_middle_unchanged() {
+        // Tilde not at start should not expand
+        let path = Path::new("foo/~/bar");
+        let result = expand_tilde(path);
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn tilde_username_style_unchanged() {
+        // ~username style is not supported
+        let path = Path::new("~otheruser/file");
+        let result = expand_tilde(path);
+        assert_eq!(result, path);
+    }
 }
