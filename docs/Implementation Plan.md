@@ -31,8 +31,8 @@ flowchart TB
     
     subgraph action [Action Layer]
         HttpClient[HttpClient Trait ✅]
-        Sender[WebhookSender Trait]
-        Retry[RetryPolicy]
+        Sender[WebhookSender Trait ✅]
+        Retry[RetryPolicy ✅]
     end
     
     CLI --> Merge
@@ -242,6 +242,6 @@ impl ValidatedConfig {
 | hybrid | HybridMonitor + HybridStream | ✅ | poller, windows-listener |
 | filter | AdapterFilter trait + CompositeFilter + FilteredFetcher | ✅ | - |
 | webhook-http | HttpRequest/HttpResponse/HttpClient/HttpError/ReqwestClient | ✅ | - |
-| webhook-sender | WebhookSender/HttpWebhook/RetryPolicy | ⬜ | webhook-http |
+| webhook-sender | WebhookSender/HttpWebhook/RetryPolicy/RetryableError/WebhookError | ✅ | webhook-http |
 | config | TOML + CLI 合并 + init 命令 | ⬜ | - |
 | main | 入口组装 + 配置摘要 + graceful shutdown | ⬜ | all |

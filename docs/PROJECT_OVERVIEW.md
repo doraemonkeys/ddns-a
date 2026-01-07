@@ -13,7 +13,7 @@
 | `network::platform` | Platform-specific implementations; `WindowsFetcher` on Windows using `GetAdaptersAddresses` |
 | `monitor` | `IpChange`, `IpChangeKind`, `diff()` pure function for change detection; `DebouncePolicy` for event merging; `PollingMonitor`, `PollingStream` for polling-based monitoring; `HybridMonitor`, `HybridStream` for combined API+polling monitoring; `ApiListener` trait for platform event notifications; `MonitorError`, `ApiError` for layered error handling |
 | `monitor::platform` | Platform-specific listeners; `WindowsApiListener` on Windows using `NotifyIpInterfaceChange` |
-| `webhook` | `HttpRequest`, `HttpResponse` value types; `HttpClient` trait for HTTP abstraction; `HttpError` for network failures; `ReqwestClient` production implementation |
+| `webhook` | `HttpRequest`, `HttpResponse` value types; `HttpClient` trait for HTTP abstraction; `HttpError`, `RetryableError`, `WebhookError` for layered error handling; `ReqwestClient` production HTTP client; `RetryPolicy` for exponential backoff; `WebhookSender` trait and `HttpWebhook` for sending IP changes with retries |
 | `time` | `Clock` trait for time abstraction; `SystemClock` production implementation |
 
 ## Key Types
@@ -90,4 +90,18 @@ HttpError::Connection(Box<dyn Error + Send + Sync>)  // Network failures
         | InvalidUrl(String)                         // Configuration error
 ReqwestClient { inner: reqwest::Client }  // Production impl
   // Factory: new(), default(), from_client(reqwest::Client)
+
+// Webhook sending with retries
+RetryPolicy { max_attempts: u32, initial_delay: Duration, max_delay: Duration, multiplier: f64 }
+  // Defaults: 3 attempts, 5s initial, 60s max, 2.0 multiplier
+  // Builder: new(), with_max_attempts(), with_initial_delay(), with_max_delay(), with_multiplier()
+  // Methods: delay_for_retry(retry) -> Duration, should_retry(attempt) -> bool
+RetryableError::Http(HttpError) | Status { status, body } | Template(String)
+WebhookError::Retryable(RetryableError) | MaxRetriesExceeded { attempts, last_error }
+WebhookSender trait { async fn send(&self, changes: &[IpChange]) -> Result<(), WebhookError> }  // Send + Sync
+HttpWebhook<H: HttpClient> { client, url, method, headers, body_template, retry_policy }
+  // Factory: new(client, url)
+  // Builder: with_method(), with_headers(), with_body_template(), with_retry_policy()
+  // Accessors: url(), method(), retry_policy()
+IsRetryable trait { fn is_retryable(&self) -> bool }  // Implemented for HttpError, RetryableError
 ```
