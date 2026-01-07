@@ -348,3 +348,41 @@ async fn debounce_handles_rapid_api_events() {
             .any(|c| c.is_added() && c.address.to_string() == "192.168.1.3")
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn api_event_without_visible_changes_starts_debounce() {
+    // Core test for the Windows API timing fix:
+    // API event fires but GetAdaptersAddresses doesn't show the new IP yet.
+    // The debounce window should start anyway, catching the IP when it appears.
+    let snapshot1 = make_snapshot("eth0", vec!["192.168.1.1"], vec![]);
+    let snapshot2 = make_snapshot("eth0", vec!["192.168.1.1", "192.168.1.2"], vec![]);
+
+    // Sequence with poll_interval=200ms, debounce=100ms:
+    // t=0: First poll establishes baseline [.1]
+    // t=0+ε: API event fires, fetch returns [.1] (no visible change), starts debounce
+    // t=200ms: Poll, fetch returns [.1, .2], debounce window expired (100ms), emit changes
+    let fetcher = MockFetcher::returning_snapshots(vec![
+        vec![snapshot1.clone()], // Poll at t=0: Baseline
+        vec![snapshot1],         // API event: IP not visible yet, but starts debounce
+        vec![snapshot2.clone()], // Poll at t=200ms: IP visible, debounce expired
+        vec![snapshot2],         // Extra for safety
+    ]);
+    let clock = MockClock::new(1000);
+
+    // API event fires immediately after first poll (available on second stream poll)
+    let listener = MockApiListener::new(vec![Some(Ok(()))]);
+
+    let debounce = DebouncePolicy::new(Duration::from_millis(100));
+    let monitor = HybridMonitor::with_clock(fetcher, listener, clock, Duration::from_millis(200))
+        .with_debounce(debounce);
+    let stream = monitor.into_stream();
+
+    let changes: Vec<_> = stream.take(1).collect().await;
+    assert_eq!(changes.len(), 1);
+    let batch = &changes[0];
+
+    // The key assertion: we caught the new IP even though API event showed no change
+    assert_eq!(batch.len(), 1);
+    assert!(batch[0].is_added());
+    assert_eq!(batch[0].address.to_string(), "192.168.1.2");
+}

@@ -126,10 +126,15 @@ where
     ///
     /// `pre_fetch_snapshot` is the snapshot state BEFORE this fetch cycle,
     /// used as baseline when starting a new debounce window.
+    ///
+    /// `triggered_by_api`: When true, starts debounce window even if no changes
+    /// detected yet. This handles Windows API timing where `NotifyIpInterfaceChange`
+    /// fires before the new IP is visible in `GetAdaptersAddresses`.
     fn process_with_debounce(
         &mut self,
         raw_changes: Vec<IpChange>,
         pre_fetch_snapshot: Option<Vec<AdapterSnapshot>>,
+        triggered_by_api: bool,
     ) -> Option<Vec<IpChange>> {
         let Some(debounce) = &self.debounce else {
             // No debounce configured - emit immediately if non-empty
@@ -140,14 +145,23 @@ where
             };
         };
 
-        if raw_changes.is_empty() && self.debounce_start.is_none() {
-            // No changes and not debouncing - nothing to do
-            return None;
-        }
-
         let now = tokio::time::Instant::now();
 
-        if !raw_changes.is_empty() && self.debounce_start.is_none() {
+        // Decide whether to start a new debounce window:
+        // - Either we detected changes (normal case)
+        // - Or API event fired (signal that changes are coming, even if not visible yet)
+        // - But only if we have a valid baseline to compare against
+        let has_valid_baseline = pre_fetch_snapshot.is_some();
+        let should_start_window = self.debounce_start.is_none()
+            && has_valid_baseline
+            && (!raw_changes.is_empty() || triggered_by_api);
+
+        if should_start_window {
+            if triggered_by_api && raw_changes.is_empty() {
+                tracing::trace!(
+                    "API event triggered but no changes detected yet, starting observation window"
+                );
+            }
             // Start new debounce window, save baseline (state BEFORE changes)
             self.debounce_start = Some(now);
             self.debounce_baseline = pre_fetch_snapshot;
@@ -252,7 +266,13 @@ where
                         continue;
                     };
 
-                    if let Some(result) = self.process_with_debounce(changes, pre_fetch_snapshot) {
+                    // API events start debounce even without detected changes,
+                    // because Windows may notify before IP is visible
+                    let triggered_by_api = matches!(trigger, PollTrigger::ApiEvent);
+
+                    if let Some(result) =
+                        self.process_with_debounce(changes, pre_fetch_snapshot, triggered_by_api)
+                    {
                         tracing::debug!(
                             "Emitting {} change(s) triggered by {}",
                             result.len(),
