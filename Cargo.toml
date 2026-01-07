@@ -1,8 +1,25 @@
 [package]
 name = "ddns-a"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
-rust-version = "1.85"  # edition 2024 requires 1.85+, also satisfies async fn in trait (1.75+)
+rust-version = "1.85"
+authors = ["doraemonkeys"]
+description = "A lightweight Dynamic DNS client for Windows that monitors IP address changes and notifies external services via webhooks"
+license = "Apache-2.0"
+repository = "https://github.com/doraemonkeys/ddns-a"
+homepage = "https://github.com/doraemonkeys/ddns-a"
+readme = "README.md"
+keywords = ["ddns", "dns", "webhook", "network", "windows"]
+categories = ["command-line-utilities", "network-programming"]
+exclude = [
+    "docs/",
+    "script/",
+    "coverage_output/",
+    "target/",
+    "tarpaulin.toml",
+    ".github/",
+    ".gitignore",
+]
 
 [lib]
 name = "ddns_a"
@@ -14,7 +31,14 @@ path = "src/main.rs"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal", "test-util"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "time",
+    "sync",
+    "signal",
+    "test-util",
+] }
 tokio-stream = "0.1"
 
 # HTTP types (decoupled from specific HTTP library)
@@ -55,7 +79,7 @@ windows = { version = "0.62", features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
     "Win32_Foundation",
-]}
+] }
 
 [dev-dependencies]
 tempfile = "3"

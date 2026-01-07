@@ -1,5 +1,13 @@
 # ddns-a
 
+[![Crates.io](https://img.shields.io/crates/v/ddns-a.svg)](https://crates.io/crates/ddns-a)
+[![Downloads](https://img.shields.io/crates/d/ddns-a.svg)](https://crates.io/crates/ddns-a)
+[![License](https://img.shields.io/crates/l/ddns-a.svg)](LICENSE)
+[![CI](https://github.com/doraemonkeys/ddns-a/actions/workflows/ci.yml/badge.svg)](https://github.com/doraemonkeys/ddns-a/actions/workflows/ci.yml)
+[![Test Coverage](https://img.shields.io/badge/coverage-90%25%2B-brightgreen.svg)](.github/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/doraemonkeys/ddns-a/pulls)
+
 A lightweight Dynamic DNS client for Windows that monitors IP address changes and notifies external services via webhooks.
 
 ## Features
@@ -14,10 +22,12 @@ A lightweight Dynamic DNS client for Windows that monitors IP address changes an
 ## Installation
 
 ```bash
-cargo install --path .
+cargo install --git https://github.com/doraemonkeys/ddns-a.git
 ```
 
-Requires Rust 1.85+ (edition 2024).
+```bash
+cargo install ddns-a
+```
 
 ## Quick Start
 
