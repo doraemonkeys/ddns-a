@@ -58,6 +58,7 @@ mod cli_tests;
 #[cfg(test)]
 mod toml_tests;
 #[cfg(test)]
+#[path = "validated_tests/mod.rs"]
 mod validated_tests;
 
 pub use cli::{Cli, Command, IpVersionArg};
