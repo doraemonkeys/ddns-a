@@ -14,7 +14,7 @@ A lightweight Dynamic DNS client for Windows that monitors IP address changes an
 
 - **Real-time monitoring** – Uses Windows API events with polling fallback
 - **State persistence** – Detects IP changes that occurred during program downtime
-- **Flexible filtering** – Include/exclude adapters by regex, skip virtual adapters
+- **Flexible filtering** – Include/exclude adapters by name regex or kind (ethernet, wireless, virtual, loopback)
 - **Customizable webhooks** – Any HTTP method, headers, bearer auth, Handlebars templates
 - **Robust retry** – Exponential backoff with configurable limits
 - **Graceful shutdown** – Handles Ctrl+C cleanly
@@ -33,10 +33,10 @@ cargo install ddns-a
 
 ```bash
 # Monitor IPv6 changes and send to webhook
-ddns-a --url https://example.com/webhook --ip-version ipv6 --exclude-virtual
+ddns-a --url https://example.com/webhook --ip-version ipv6
 
-# Monitor both IPv4 and IPv6
-ddns-a --url https://api.example.com/ddns --ip-version both --exclude-virtual
+# Monitor both IPv4 and IPv6, exclude virtual adapters
+ddns-a --url https://api.example.com/ddns --ip-version both --exclude-kind virtual
 
 # With bearer token and custom template
 ddns-a --url https://api.example.com/ddns \
@@ -73,7 +73,8 @@ Request:
 Filter:
     --include-adapter <PATTERN>  Include adapters matching regex
     --exclude-adapter <PATTERN>  Exclude adapters matching regex
-    --exclude-virtual            Exclude virtual adapters
+    --include-kind <KIND>        Include adapters by kind (ethernet, wireless, virtual, loopback)
+    --exclude-kind <KIND>        Exclude adapters by kind
 
 Monitor:
     --poll-interval <SEC>        Polling interval (default: 60)
@@ -98,24 +99,27 @@ By default (without any filter options):
 |--------------|-----------|
 | Ethernet | ✅ Yes |
 | Wi-Fi | ✅ Yes |
-| VMware / VirtualBox / Hyper-V | ✅ Yes |
-| Loopback (127.0.0.1 / ::1) | ❌ No (always excluded) |
+| Virtual (VMware, VirtualBox, Hyper-V, etc.) | ✅ Yes |
+| Loopback (127.0.0.1 / ::1) | ❌ No (excluded by default) |
 
-**Recommendation**: Use `--exclude-virtual` to skip virtual adapters in most cases.
+**Note**: Loopback is excluded by default. Use `--include-kind loopback` to monitor it.  
+**Recommendation**: Use `--exclude-kind virtual` to skip virtual adapters in most cases.
 
 ### Filter Examples
 
 ```bash
 # Exclude virtual adapters (recommended)
-ddns-a --url ... --ip-version ipv6 --exclude-virtual
+ddns-a --url ... --ip-version ipv6 --exclude-kind virtual
 
-# Monitor only Ethernet adapter
+# Monitor only Ethernet and Wireless adapters
+ddns-a --url ... --ip-version ipv6 --include-kind ethernet,wireless
+
+# Monitor only adapters matching regex
 ddns-a --url ... --ip-version ipv6 --include-adapter "^Ethernet$"
 
-# Monitor Ethernet and Wi-Fi, exclude Docker
+# Combine kind and name filters
 ddns-a --url ... --ip-version both \
-       --include-adapter "^Ethernet" \
-       --include-adapter "^Wi-Fi" \
+       --exclude-kind virtual \
        --exclude-adapter "^Docker"
 ```
 
@@ -142,9 +146,10 @@ body_template = '{"ip": "{{address}}", "adapter": "{{adapter}}", "event": "{{kin
 # X-Custom-Header = "value"
 
 [filter]
+# include_kinds = ["ethernet", "wireless"]
+exclude_kinds = ["virtual"]
 # include = ["^Ethernet", "^Wi-Fi"]
 # exclude = ["^Docker"]
-exclude_virtual = true
 
 [monitor]
 poll_interval = 60
