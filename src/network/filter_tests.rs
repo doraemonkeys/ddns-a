@@ -53,10 +53,335 @@ fn docker_adapter() -> AdapterSnapshot {
 }
 
 // ============================================================================
-// FilterMode Tests
+// KindFilter Tests
 // ============================================================================
 
-mod filter_mode {
+mod kind_filter {
+    use super::*;
+
+    #[test]
+    fn matches_single_kind() {
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        assert!(filter.matches(&ethernet_adapter()));
+        assert!(!filter.matches(&wifi_adapter()));
+    }
+
+    #[test]
+    fn matches_multiple_kinds() {
+        let filter = KindFilter::new([AdapterKind::Ethernet, AdapterKind::Wireless]);
+        assert!(filter.matches(&ethernet_adapter()));
+        assert!(filter.matches(&wifi_adapter()));
+        assert!(!filter.matches(&virtual_adapter()));
+    }
+
+    #[test]
+    fn empty_filter_matches_nothing() {
+        let filter = KindFilter::new([]);
+        assert!(!filter.matches(&ethernet_adapter()));
+        assert!(!filter.matches(&wifi_adapter()));
+    }
+
+    #[test]
+    fn is_empty_true_for_no_kinds() {
+        let filter = KindFilter::new([]);
+        assert!(filter.is_empty());
+    }
+
+    #[test]
+    fn is_empty_false_when_has_kinds() {
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        assert!(!filter.is_empty());
+    }
+
+    #[test]
+    fn len_returns_kind_count() {
+        let filter = KindFilter::new([AdapterKind::Ethernet, AdapterKind::Wireless]);
+        assert_eq!(filter.len(), 2);
+    }
+
+    #[test]
+    fn kinds_accessor_returns_set() {
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        assert!(filter.kinds().contains(&AdapterKind::Ethernet));
+        assert!(!filter.kinds().contains(&AdapterKind::Wireless));
+    }
+
+    #[test]
+    fn matches_virtual_kind() {
+        let filter = KindFilter::new([AdapterKind::Virtual]);
+        assert!(filter.matches(&virtual_adapter()));
+        assert!(filter.matches(&docker_adapter()));
+        assert!(!filter.matches(&ethernet_adapter()));
+    }
+
+    #[test]
+    fn matches_loopback_kind() {
+        let filter = KindFilter::new([AdapterKind::Loopback]);
+        assert!(filter.matches(&loopback_adapter()));
+        assert!(!filter.matches(&ethernet_adapter()));
+    }
+
+    #[test]
+    fn debug_impl_works() {
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let debug_str = format!("{filter:?}");
+        assert!(debug_str.contains("KindFilter"));
+    }
+
+    #[test]
+    fn clone_works() {
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        #[allow(clippy::redundant_clone)]
+        let cloned = filter.clone();
+        assert!(cloned.matches(&ethernet_adapter()));
+    }
+}
+
+// ============================================================================
+// FilterChain Tests
+// ============================================================================
+
+mod filter_chain {
+    use super::*;
+
+    #[test]
+    fn empty_chain_matches_all() {
+        let chain = FilterChain::new();
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(chain.matches(&virtual_adapter()));
+        assert!(chain.matches(&loopback_adapter()));
+    }
+
+    #[test]
+    fn exclude_rejects_matching_adapters() {
+        let chain = FilterChain::new().exclude(KindFilter::new([AdapterKind::Virtual]));
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(!chain.matches(&virtual_adapter()));
+    }
+
+    #[test]
+    fn include_accepts_matching_adapters() {
+        let chain = FilterChain::new().include(KindFilter::new([AdapterKind::Ethernet]));
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(!chain.matches(&wifi_adapter()));
+    }
+
+    #[test]
+    fn exclude_takes_priority_over_include() {
+        // Both include and exclude Virtual - exclude wins
+        let chain = FilterChain::new()
+            .include(KindFilter::new([AdapterKind::Virtual]))
+            .exclude(KindFilter::new([AdapterKind::Virtual]));
+        assert!(!chain.matches(&virtual_adapter()));
+    }
+
+    #[test]
+    fn multiple_includes_use_or_semantics() {
+        // Include Ethernet OR Wireless - either matches
+        let chain = FilterChain::new()
+            .include(KindFilter::new([AdapterKind::Ethernet]))
+            .include(KindFilter::new([AdapterKind::Wireless]));
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(chain.matches(&wifi_adapter()));
+        assert!(!chain.matches(&virtual_adapter()));
+    }
+
+    #[test]
+    fn multiple_excludes_use_and_semantics() {
+        // Exclude Virtual AND Loopback - both are excluded
+        let chain = FilterChain::new()
+            .exclude(KindFilter::new([AdapterKind::Virtual]))
+            .exclude(KindFilter::new([AdapterKind::Loopback]));
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(!chain.matches(&virtual_adapter()));
+        assert!(!chain.matches(&loopback_adapter()));
+    }
+
+    #[test]
+    fn include_count_returns_correct_value() {
+        let chain = FilterChain::new()
+            .include(KindFilter::new([AdapterKind::Ethernet]))
+            .include(KindFilter::new([AdapterKind::Wireless]));
+        assert_eq!(chain.include_count(), 2);
+    }
+
+    #[test]
+    fn exclude_count_returns_correct_value() {
+        let chain = FilterChain::new()
+            .exclude(KindFilter::new([AdapterKind::Virtual]))
+            .exclude(KindFilter::new([AdapterKind::Loopback]));
+        assert_eq!(chain.exclude_count(), 2);
+    }
+
+    #[test]
+    fn is_empty_true_when_no_filters() {
+        let chain = FilterChain::new();
+        assert!(chain.is_empty());
+    }
+
+    #[test]
+    fn is_empty_false_with_include() {
+        let chain = FilterChain::new().include(KindFilter::new([AdapterKind::Ethernet]));
+        assert!(!chain.is_empty());
+    }
+
+    #[test]
+    fn is_empty_false_with_exclude() {
+        let chain = FilterChain::new().exclude(KindFilter::new([AdapterKind::Virtual]));
+        assert!(!chain.is_empty());
+    }
+
+    #[test]
+    fn default_creates_empty_chain() {
+        let chain = FilterChain::default();
+        assert!(chain.is_empty());
+    }
+
+    #[test]
+    fn debug_impl_shows_counts() {
+        let chain = FilterChain::new()
+            .include(KindFilter::new([AdapterKind::Ethernet]))
+            .exclude(KindFilter::new([AdapterKind::Virtual]));
+        let debug_str = format!("{chain:?}");
+        assert!(debug_str.contains("FilterChain"));
+        assert!(debug_str.contains("include_count"));
+        assert!(debug_str.contains("exclude_count"));
+    }
+
+    #[test]
+    fn complex_real_world_scenario() {
+        // Include physical adapters (Ethernet/Wireless), exclude loopback
+        let chain = FilterChain::new()
+            .exclude(KindFilter::new([AdapterKind::Loopback]))
+            .include(KindFilter::new([
+                AdapterKind::Ethernet,
+                AdapterKind::Wireless,
+            ]));
+
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(chain.matches(&wifi_adapter()));
+        assert!(!chain.matches(&virtual_adapter())); // Not in include list
+        assert!(!chain.matches(&loopback_adapter())); // Excluded
+    }
+
+    #[test]
+    fn with_name_regex_filter() {
+        // Exclude adapters with "Docker" in name
+        let chain = FilterChain::new().exclude(NameRegexFilter::new(r"(?i)docker").unwrap());
+
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(!chain.matches(&docker_adapter()));
+    }
+
+    #[test]
+    fn combined_kind_and_name_filters() {
+        // Include Ethernet/Wireless by kind, but exclude "Docker" by name
+        let chain = FilterChain::new()
+            .exclude(NameRegexFilter::new(r"(?i)docker").unwrap())
+            .include(KindFilter::new([
+                AdapterKind::Ethernet,
+                AdapterKind::Wireless,
+            ]));
+
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(chain.matches(&wifi_adapter()));
+        assert!(!chain.matches(&docker_adapter())); // Excluded by name
+        assert!(!chain.matches(&loopback_adapter())); // Not included by kind
+    }
+}
+
+// ============================================================================
+// NameRegexFilter Tests (New Pure Matcher API)
+// ============================================================================
+
+mod name_regex_filter {
+    use super::*;
+
+    #[test]
+    fn matches_when_pattern_matches() {
+        let filter = NameRegexFilter::new(r"^Ethernet").unwrap();
+        assert!(filter.matches(&ethernet_adapter()));
+    }
+
+    #[test]
+    fn does_not_match_when_pattern_differs() {
+        let filter = NameRegexFilter::new(r"^Ethernet").unwrap();
+        assert!(!filter.matches(&wifi_adapter()));
+    }
+
+    #[test]
+    fn partial_match_works() {
+        let filter = NameRegexFilter::new(r"Wi").unwrap();
+        assert!(filter.matches(&wifi_adapter()));
+    }
+
+    #[test]
+    fn case_sensitive_by_default() {
+        let filter = NameRegexFilter::new(r"ethernet").unwrap();
+        assert!(!filter.matches(&ethernet_adapter())); // "Ethernet" has capital E
+    }
+
+    #[test]
+    fn case_insensitive_with_flag() {
+        let filter = NameRegexFilter::new(r"(?i)ethernet").unwrap();
+        assert!(filter.matches(&ethernet_adapter()));
+    }
+
+    #[test]
+    fn invalid_regex_returns_error() {
+        let result = NameRegexFilter::new(r"[invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn pattern_accessor_returns_regex() {
+        let filter = NameRegexFilter::new(r"^eth\d+").unwrap();
+        assert!(filter.pattern().is_match("eth0"));
+        assert!(!filter.pattern().is_match("wlan0"));
+    }
+
+    #[test]
+    fn debug_impl_works() {
+        let filter = NameRegexFilter::new(r"test").unwrap();
+        let debug_str = format!("{filter:?}");
+        assert!(debug_str.contains("NameRegexFilter"));
+    }
+
+    #[test]
+    fn matches_docker_pattern() {
+        let filter = NameRegexFilter::new(r"(?i)docker").unwrap();
+        assert!(filter.matches(&docker_adapter()));
+        assert!(!filter.matches(&ethernet_adapter()));
+    }
+
+    #[test]
+    fn complex_pattern_with_alternation() {
+        let filter = NameRegexFilter::new(r"(?i)(docker|vmware|virtualbox)").unwrap();
+        assert!(filter.matches(&docker_adapter()));
+        assert!(!filter.matches(&ethernet_adapter()));
+    }
+
+    #[test]
+    fn use_with_filter_chain_include() {
+        let chain = FilterChain::new().include(NameRegexFilter::new(r"^Eth").unwrap());
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(!chain.matches(&wifi_adapter()));
+    }
+
+    #[test]
+    fn use_with_filter_chain_exclude() {
+        let chain = FilterChain::new().exclude(NameRegexFilter::new(r"^vEthernet").unwrap());
+        assert!(chain.matches(&ethernet_adapter()));
+        assert!(!chain.matches(&virtual_adapter()));
+    }
+}
+
+// ============================================================================
+// Deprecated Types Tests (kept for backward compatibility verification)
+// ============================================================================
+
+#[allow(deprecated)]
+mod deprecated_filter_mode {
     use super::*;
 
     #[test]
@@ -79,108 +404,8 @@ mod filter_mode {
     }
 }
 
-// ============================================================================
-// NameRegexFilter Tests
-// ============================================================================
-
-mod name_regex_filter {
-    use super::*;
-
-    #[test]
-    fn include_mode_matches_when_pattern_matches() {
-        let filter = NameRegexFilter::include(r"^Ethernet").unwrap();
-        assert!(filter.matches(&ethernet_adapter()));
-    }
-
-    #[test]
-    fn include_mode_rejects_when_pattern_does_not_match() {
-        let filter = NameRegexFilter::include(r"^Ethernet").unwrap();
-        assert!(!filter.matches(&wifi_adapter()));
-    }
-
-    #[test]
-    fn exclude_mode_rejects_when_pattern_matches() {
-        let filter = NameRegexFilter::exclude(r"^vEthernet").unwrap();
-        assert!(!filter.matches(&virtual_adapter()));
-    }
-
-    #[test]
-    fn exclude_mode_matches_when_pattern_does_not_match() {
-        let filter = NameRegexFilter::exclude(r"^vEthernet").unwrap();
-        assert!(filter.matches(&ethernet_adapter()));
-    }
-
-    #[test]
-    fn partial_match_works() {
-        let filter = NameRegexFilter::include(r"Wi").unwrap();
-        assert!(filter.matches(&wifi_adapter()));
-    }
-
-    #[test]
-    fn case_sensitive_by_default() {
-        let filter = NameRegexFilter::include(r"ethernet").unwrap();
-        assert!(!filter.matches(&ethernet_adapter())); // "Ethernet" has capital E
-    }
-
-    #[test]
-    fn case_insensitive_with_flag() {
-        let filter = NameRegexFilter::include(r"(?i)ethernet").unwrap();
-        assert!(filter.matches(&ethernet_adapter()));
-    }
-
-    #[test]
-    fn invalid_regex_returns_error() {
-        let result = NameRegexFilter::include(r"[invalid");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn new_with_include_mode() {
-        let filter = NameRegexFilter::new(r"test", FilterMode::Include).unwrap();
-        assert_eq!(filter.mode(), FilterMode::Include);
-    }
-
-    #[test]
-    fn new_with_exclude_mode() {
-        let filter = NameRegexFilter::new(r"test", FilterMode::Exclude).unwrap();
-        assert_eq!(filter.mode(), FilterMode::Exclude);
-    }
-
-    #[test]
-    fn pattern_accessor_returns_regex() {
-        let filter = NameRegexFilter::include(r"^eth\d+").unwrap();
-        assert!(filter.pattern().is_match("eth0"));
-        assert!(!filter.pattern().is_match("wlan0"));
-    }
-
-    #[test]
-    fn debug_impl_works() {
-        let filter = NameRegexFilter::include(r"test").unwrap();
-        let debug_str = format!("{filter:?}");
-        assert!(debug_str.contains("NameRegexFilter"));
-    }
-
-    #[test]
-    fn exclude_docker_adapters() {
-        let filter = NameRegexFilter::exclude(r"(?i)docker").unwrap();
-        assert!(!filter.matches(&docker_adapter()));
-        assert!(filter.matches(&ethernet_adapter()));
-    }
-
-    #[test]
-    fn complex_pattern_with_alternation() {
-        let filter = NameRegexFilter::exclude(r"(?i)(docker|vmware|virtualbox)").unwrap();
-        assert!(!filter.matches(&docker_adapter()));
-        assert!(filter.matches(&ethernet_adapter()));
-        assert!(filter.matches(&wifi_adapter()));
-    }
-}
-
-// ============================================================================
-// ExcludeVirtualFilter Tests
-// ============================================================================
-
-mod exclude_virtual_filter {
+#[allow(deprecated)]
+mod deprecated_exclude_virtual_filter {
     use super::*;
 
     #[test]
@@ -203,7 +428,6 @@ mod exclude_virtual_filter {
 
     #[test]
     fn includes_loopback_adapters() {
-        // Loopback is not virtual
         let filter = ExcludeVirtualFilter;
         assert!(filter.matches(&loopback_adapter()));
     }
@@ -229,11 +453,8 @@ mod exclude_virtual_filter {
     }
 }
 
-// ============================================================================
-// ExcludeLoopbackFilter Tests
-// ============================================================================
-
-mod exclude_loopback_filter {
+#[allow(deprecated)]
+mod deprecated_exclude_loopback_filter {
     use super::*;
 
     #[test]
@@ -267,11 +488,8 @@ mod exclude_loopback_filter {
     }
 }
 
-// ============================================================================
-// CompositeFilter Tests
-// ============================================================================
-
-mod composite_filter {
+#[allow(deprecated)]
+mod deprecated_composite_filter {
     use super::*;
 
     #[test]
@@ -298,19 +516,6 @@ mod composite_filter {
         assert!(filter.matches(&ethernet_adapter()));
         assert!(!filter.matches(&virtual_adapter()));
         assert!(!filter.matches(&loopback_adapter()));
-    }
-
-    #[test]
-    fn all_filters_must_pass() {
-        // Include "Ethernet" AND exclude virtual
-        // Virtual adapter named "vEthernet" should fail even though name contains "Ethernet"
-        let filter = CompositeFilter::new()
-            .with(NameRegexFilter::include(r"Ethernet").unwrap())
-            .with(ExcludeVirtualFilter);
-
-        assert!(filter.matches(&ethernet_adapter())); // Name matches, not virtual
-        assert!(!filter.matches(&virtual_adapter())); // Name contains Ethernet, but is virtual
-        assert!(!filter.matches(&wifi_adapter())); // Name doesn't match
     }
 
     #[test]
@@ -346,22 +551,7 @@ mod composite_filter {
             .with(ExcludeLoopbackFilter);
         let debug_str = format!("{filter:?}");
         assert!(debug_str.contains("CompositeFilter"));
-        assert!(debug_str.contains('2')); // filter_count
-    }
-
-    #[test]
-    fn complex_real_world_scenario() {
-        // Real-world filter: exclude virtual, loopback, and Docker adapters
-        let filter = CompositeFilter::new()
-            .with(ExcludeVirtualFilter)
-            .with(ExcludeLoopbackFilter)
-            .with(NameRegexFilter::exclude(r"(?i)docker").unwrap());
-
-        assert!(filter.matches(&ethernet_adapter()));
-        assert!(filter.matches(&wifi_adapter()));
-        assert!(!filter.matches(&virtual_adapter()));
-        assert!(!filter.matches(&loopback_adapter()));
-        assert!(!filter.matches(&docker_adapter()));
+        assert!(debug_str.contains('2'));
     }
 }
 
@@ -404,10 +594,10 @@ mod filtered_fetcher {
     }
 
     #[test]
-    fn filters_adapters_from_inner_fetcher() {
+    fn filters_adapters_with_kind_filter() {
         let all_adapters = vec![ethernet_adapter(), virtual_adapter(), wifi_adapter()];
-        let fetcher =
-            FilteredFetcher::new(MockFetcher::returning(all_adapters), ExcludeVirtualFilter);
+        let filter = KindFilter::new([AdapterKind::Ethernet, AdapterKind::Wireless]);
+        let fetcher = FilteredFetcher::new(MockFetcher::returning(all_adapters), filter);
 
         let result = fetcher.fetch().unwrap();
 
@@ -416,61 +606,7 @@ mod filtered_fetcher {
     }
 
     #[test]
-    fn propagates_errors_from_inner_fetcher() {
-        let fetcher = FilteredFetcher::new(
-            MockFetcher::new(vec![Err(FetchError::Platform {
-                message: "test error".to_string(),
-            })]),
-            ExcludeVirtualFilter,
-        );
-
-        let result = fetcher.fetch();
-
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn empty_result_when_all_filtered() {
-        let all_virtual = vec![virtual_adapter(), docker_adapter()];
-        let fetcher =
-            FilteredFetcher::new(MockFetcher::returning(all_virtual), ExcludeVirtualFilter);
-
-        let result = fetcher.fetch().unwrap();
-
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn inner_accessor_returns_reference() {
-        let mock = MockFetcher::returning(vec![]);
-        let fetcher = FilteredFetcher::new(mock, ExcludeVirtualFilter);
-
-        // Can access inner fetcher
-        let _ = fetcher.inner();
-    }
-
-    #[test]
-    fn filter_accessor_returns_reference() {
-        let mock = MockFetcher::returning(vec![]);
-        let fetcher = FilteredFetcher::new(mock, ExcludeVirtualFilter);
-
-        // Can access filter
-        let _ = fetcher.filter();
-    }
-
-    #[test]
-    fn into_inner_returns_owned_fetcher() {
-        let mock = MockFetcher::returning(vec![ethernet_adapter()]);
-        let fetcher = FilteredFetcher::new(mock, ExcludeVirtualFilter);
-
-        let inner = fetcher.into_inner();
-        let result = inner.fetch().unwrap();
-
-        assert_eq!(result.len(), 1);
-    }
-
-    #[test]
-    fn works_with_composite_filter() {
+    fn filters_adapters_with_filter_chain() {
         let adapters = vec![
             ethernet_adapter(),
             virtual_adapter(),
@@ -478,11 +614,12 @@ mod filtered_fetcher {
             wifi_adapter(),
         ];
 
-        let filter = CompositeFilter::new()
-            .with(ExcludeVirtualFilter)
-            .with(ExcludeLoopbackFilter);
+        let chain = FilterChain::new().exclude(KindFilter::new([
+            AdapterKind::Virtual,
+            AdapterKind::Loopback,
+        ]));
 
-        let fetcher = FilteredFetcher::new(MockFetcher::returning(adapters), filter);
+        let fetcher = FilteredFetcher::new(MockFetcher::returning(adapters), chain);
         let result = fetcher.fetch().unwrap();
 
         assert_eq!(result.len(), 2);
@@ -491,18 +628,73 @@ mod filtered_fetcher {
     }
 
     #[test]
+    fn propagates_errors_from_inner_fetcher() {
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(
+            MockFetcher::new(vec![Err(FetchError::Platform {
+                message: "test error".to_string(),
+            })]),
+            filter,
+        );
+
+        let result = fetcher.fetch();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_result_when_all_filtered() {
+        let all_virtual = vec![virtual_adapter(), docker_adapter()];
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(MockFetcher::returning(all_virtual), filter);
+
+        let result = fetcher.fetch().unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn inner_accessor_returns_reference() {
+        let mock = MockFetcher::returning(vec![]);
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(mock, filter);
+
+        let _ = fetcher.inner();
+    }
+
+    #[test]
+    fn filter_accessor_returns_reference() {
+        let mock = MockFetcher::returning(vec![]);
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(mock, filter);
+
+        let _ = fetcher.filter();
+    }
+
+    #[test]
+    fn into_inner_returns_owned_fetcher() {
+        let mock = MockFetcher::returning(vec![ethernet_adapter()]);
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(mock, filter);
+
+        let inner = fetcher.into_inner();
+        let result = inner.fetch().unwrap();
+
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
     fn debug_impl_works() {
-        let fetcher = FilteredFetcher::new(MockFetcher::returning(vec![]), ExcludeVirtualFilter);
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(MockFetcher::returning(vec![]), filter);
         let debug_str = format!("{fetcher:?}");
         assert!(debug_str.contains("FilteredFetcher"));
     }
 
     #[test]
     fn implements_address_fetcher_trait() {
-        // Verify FilteredFetcher implements AddressFetcher via type constraint
         fn assert_fetcher<F: AddressFetcher>(_: &F) {}
 
-        let fetcher = FilteredFetcher::new(MockFetcher::returning(vec![]), ExcludeVirtualFilter);
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
+        let fetcher = FilteredFetcher::new(MockFetcher::returning(vec![]), filter);
         assert_fetcher(&fetcher);
     }
 }
@@ -516,7 +708,7 @@ mod blanket_impl {
 
     #[test]
     fn reference_to_filter_implements_trait() {
-        let filter = ExcludeVirtualFilter;
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
         let filter_ref: &dyn AdapterFilter = &filter;
 
         assert!(filter_ref.matches(&ethernet_adapter()));
@@ -525,7 +717,7 @@ mod blanket_impl {
 
     #[test]
     fn boxed_filter_implements_trait() {
-        let filter: Box<dyn AdapterFilter> = Box::new(ExcludeVirtualFilter);
+        let filter: Box<dyn AdapterFilter> = Box::new(KindFilter::new([AdapterKind::Ethernet]));
 
         assert!(filter.matches(&ethernet_adapter()));
         assert!(!filter.matches(&virtual_adapter()));
@@ -533,11 +725,10 @@ mod blanket_impl {
 
     #[test]
     fn double_reference_works() {
-        let filter = ExcludeVirtualFilter;
+        let filter = KindFilter::new([AdapterKind::Ethernet]);
         let filter_ref = &filter;
         let filter_ref_ref = &filter_ref;
 
-        // Should compile and work due to blanket impl
         assert!(filter_ref_ref.matches(&ethernet_adapter()));
     }
 }

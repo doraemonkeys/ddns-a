@@ -40,25 +40,33 @@ mod cli_precedence {
     }
 
     #[test]
-    fn cli_exclude_virtual_wins() {
+    fn cli_exclude_kind_replaces_toml() {
+        use crate::network::{AdapterKind, AdapterSnapshot};
+        use crate::network::filter::AdapterFilter;
+
         let cli = cli(&[
             "--url",
             "https://example.com",
             "--ip-version",
             "ipv4",
-            "--exclude-virtual",
+            "--exclude-kind",
+            "virtual",
         ]);
         let toml = toml(
-            r"
+            r#"
             [filter]
-            exclude_virtual = false
-        ",
+            exclude_kinds = ["wireless"]
+        "#,
         );
 
         let config = ValidatedConfig::from_raw(&cli, Some(&toml)).unwrap();
 
-        // Filter should include ExcludeVirtualFilter (len >= 2: loopback + virtual)
-        assert!(config.filter.len() >= 2);
+        // CLI replaces TOML - virtual is excluded, wireless is NOT excluded
+        let virtual_adapter = AdapterSnapshot::new("vm0", AdapterKind::Virtual, vec![], vec![]);
+        let wireless = AdapterSnapshot::new("wlan0", AdapterKind::Wireless, vec![], vec![]);
+
+        assert!(!config.filter.matches(&virtual_adapter)); // Excluded by CLI
+        assert!(config.filter.matches(&wireless)); // Not excluded (CLI replaced TOML)
     }
 }
 

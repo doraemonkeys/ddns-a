@@ -6,6 +6,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+use crate::network::AdapterKind;
+
 /// DDNS-A: Dynamic DNS Address Monitor
 ///
 /// Monitors IP address changes on network adapters and notifies
@@ -51,9 +53,13 @@ pub struct Cli {
     #[arg(long = "exclude-adapter", value_name = "PATTERN")]
     pub exclude_adapters: Vec<String>,
 
-    /// Exclude virtual adapters (`VMware`, `VirtualBox`, `Hyper-V`, etc.)
-    #[arg(long = "exclude-virtual")]
-    pub exclude_virtual: bool,
+    /// Adapter kinds to include (can be specified multiple times or comma-separated)
+    #[arg(long = "include-kind", value_name = "KIND", value_delimiter = ',')]
+    pub include_kinds: Vec<AdapterKindArg>,
+
+    /// Adapter kinds to exclude (can be specified multiple times or comma-separated)
+    #[arg(long = "exclude-kind", value_name = "KIND", value_delimiter = ',')]
+    pub exclude_kinds: Vec<AdapterKindArg>,
 
     /// Polling interval in seconds
     #[arg(long = "poll-interval")]
@@ -119,6 +125,35 @@ impl From<IpVersionArg> for crate::network::IpVersion {
             IpVersionArg::V4 => Self::V4,
             IpVersionArg::V6 => Self::V6,
             IpVersionArg::Both => Self::Both,
+        }
+    }
+}
+
+/// Adapter kind argument for CLI parsing.
+///
+/// Maps to [`AdapterKind`] for filtering adapters by type.
+/// Only the four known adapter kinds are exposed; use name regex filters
+/// for `Other(u32)` variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ValueEnum)]
+#[value(rename_all = "lowercase")]
+pub enum AdapterKindArg {
+    /// Physical Ethernet adapter
+    Ethernet,
+    /// Wireless (Wi-Fi) adapter
+    Wireless,
+    /// Virtual adapter (`VMware`, `VirtualBox`, `Hyper-V`, WSL, etc.)
+    Virtual,
+    /// Loopback adapter (localhost)
+    Loopback,
+}
+
+impl From<AdapterKindArg> for AdapterKind {
+    fn from(arg: AdapterKindArg) -> Self {
+        match arg {
+            AdapterKindArg::Ethernet => Self::Ethernet,
+            AdapterKindArg::Wireless => Self::Wireless,
+            AdapterKindArg::Virtual => Self::Virtual,
+            AdapterKindArg::Loopback => Self::Loopback,
         }
     }
 }

@@ -14,14 +14,14 @@ use ddns_a::config::ValidatedConfig;
 use ddns_a::monitor::{
     DebouncePolicy, HybridMonitor, IpChange, PollingMonitor, diff, filter_by_version,
 };
-use ddns_a::network::filter::{CompositeFilter, FilteredFetcher};
+use ddns_a::network::filter::{FilterChain, FilteredFetcher};
 use ddns_a::network::platform::PlatformFetcher;
 use ddns_a::network::{AdapterSnapshot, AddressFetcher, IpVersion};
 use ddns_a::state::{FileStateStore, LoadResult, StateStore};
 use ddns_a::webhook::{HttpWebhook, ReqwestClient, WebhookSender};
 
 /// Type alias for the application's filtered fetcher.
-type AppFetcher = FilteredFetcher<PlatformFetcher, CompositeFilter>;
+type AppFetcher = FilteredFetcher<PlatformFetcher, FilterChain>;
 
 #[cfg(windows)]
 use ddns_a::monitor::platform::PlatformListener;

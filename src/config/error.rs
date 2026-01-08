@@ -85,6 +85,13 @@ pub enum ConfigError {
         value: String,
     },
 
+    /// Invalid adapter kind value.
+    #[error("Invalid adapter kind '{value}': expected ethernet, wireless, virtual, or loopback")]
+    InvalidAdapterKind {
+        /// The invalid value provided
+        value: String,
+    },
+
     /// Invalid header format.
     #[error("Invalid header format '{value}': expected 'Key=Value' or 'Key: Value'")]
     InvalidHeader {

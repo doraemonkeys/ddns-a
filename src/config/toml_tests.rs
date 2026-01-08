@@ -60,7 +60,8 @@ mod parsing {
             [filter]
             include = ["^eth", "^wlan"]
             exclude = ["^Docker", "^vEthernet"]
-            exclude_virtual = true
+            include_kinds = ["ethernet", "wireless"]
+            exclude_kinds = ["virtual", "loopback"]
         "#;
 
         let config = TomlConfig::parse(toml).unwrap();
@@ -68,7 +69,25 @@ mod parsing {
 
         assert_eq!(filter.include, vec!["^eth", "^wlan"]);
         assert_eq!(filter.exclude, vec!["^Docker", "^vEthernet"]);
-        assert!(filter.exclude_virtual);
+        assert_eq!(filter.include_kinds, vec!["ethernet", "wireless"]);
+        assert_eq!(filter.exclude_kinds, vec!["virtual", "loopback"]);
+    }
+
+    #[test]
+    fn parse_filter_section_with_only_kinds() {
+        let toml = r#"
+            [filter]
+            include_kinds = ["ethernet"]
+            exclude_kinds = ["loopback"]
+        "#;
+
+        let config = TomlConfig::parse(toml).unwrap();
+        let filter = &config.filter;
+
+        assert!(filter.include.is_empty());
+        assert!(filter.exclude.is_empty());
+        assert_eq!(filter.include_kinds, vec!["ethernet"]);
+        assert_eq!(filter.exclude_kinds, vec!["loopback"]);
     }
 
     #[test]
@@ -113,7 +132,8 @@ mod parsing {
         assert!(config.webhook.url.is_none());
         assert!(config.webhook.ip_version.is_none());
         assert!(config.filter.include.is_empty());
-        assert!(!config.filter.exclude_virtual);
+        assert!(config.filter.include_kinds.is_empty());
+        assert!(config.filter.exclude_kinds.is_empty());
     }
 
     #[test]

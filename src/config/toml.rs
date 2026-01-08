@@ -61,17 +61,21 @@ pub struct WebhookSection {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FilterSection {
-    /// Regex patterns for adapters to include
+    /// Regex patterns for adapters to include (by name)
     #[serde(default)]
     pub include: Vec<String>,
 
-    /// Regex patterns for adapters to exclude
+    /// Regex patterns for adapters to exclude (by name)
     #[serde(default)]
     pub exclude: Vec<String>,
 
-    /// Exclude virtual adapters
+    /// Adapter kinds to include (e.g., "ethernet", "wireless")
     #[serde(default)]
-    pub exclude_virtual: bool,
+    pub include_kinds: Vec<String>,
+
+    /// Adapter kinds to exclude (e.g., "virtual", "loopback")
+    #[serde(default)]
+    pub exclude_kinds: Vec<String>,
 }
 
 /// Monitoring configuration section.
@@ -160,16 +164,23 @@ pub fn default_config_template() -> String {
 # body_template = '{"ip": "{{address}}", "adapter": "{{adapter}}"}'
 
 [filter]
-# Regex patterns for adapters to include (empty = all)
-# Note: CLI patterns REPLACE these entirely (not merged)
+# Adapter kinds to include (empty = all kinds)
+# Valid values: ethernet, wireless, virtual, loopback
+# Note: CLI --include-kind REPLACES these entirely (not merged)
+# include_kinds = ["ethernet", "wireless"]
+
+# Adapter kinds to exclude
+# Note: Loopback is excluded by default unless explicitly included
+# Note: CLI --exclude-kind REPLACES these entirely (not merged)
+# exclude_kinds = ["virtual"]
+
+# Regex patterns for adapters to include by name (empty = all names)
+# Note: CLI --include-adapter REPLACES these entirely (not merged)
 # include = ["^eth", "^Ethernet"]
 
-# Regex patterns for adapters to exclude
-# Note: CLI patterns REPLACE these entirely (not merged)
+# Regex patterns for adapters to exclude by name
+# Note: CLI --exclude-adapter REPLACES these entirely (not merged)
 # exclude = ["^Docker", "^vEthernet"]
-
-# Exclude virtual adapters (VMware, VirtualBox, Hyper-V, etc.)
-exclude_virtual = true
 
 [monitor]
 # Polling interval in seconds (default: 60)

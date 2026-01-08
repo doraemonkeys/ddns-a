@@ -3,6 +3,7 @@
 //! This module contains the final, validated configuration that is used
 //! by the application. All validation is performed during construction.
 
+use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -12,13 +13,11 @@ use http::header::{AUTHORIZATION, HeaderName, HeaderValue};
 use http::{HeaderMap, Method};
 use url::Url;
 
-use crate::network::IpVersion;
-use crate::network::filter::{
-    CompositeFilter, ExcludeLoopbackFilter, ExcludeVirtualFilter, NameRegexFilter,
-};
+use crate::network::filter::{FilterChain, KindFilter, NameRegexFilter};
+use crate::network::{AdapterKind, IpVersion};
 use crate::webhook::RetryPolicy;
 
-use super::cli::Cli;
+use super::cli::{AdapterKindArg, Cli};
 use super::defaults;
 use super::error::{ConfigError, field};
 use super::toml::TomlConfig;
@@ -50,7 +49,7 @@ pub struct ValidatedConfig {
     pub body_template: Option<String>,
 
     /// Adapter filter configuration
-    pub filter: CompositeFilter,
+    pub filter: FilterChain,
 
     /// Polling interval
     pub poll_interval: Duration,
@@ -82,7 +81,7 @@ impl fmt::Display for ValidatedConfig {
         write!(
             f,
             "Config {{ url: {}, ip_version: {}, method: {}, poll_interval: {}s, poll_only: {}, \
-             retry: {}x/{}s, state_file: {}, dry_run: {}, filters: {} }}",
+             retry: {}x/{}s, state_file: {}, dry_run: {}, filters: inc={}/exc={} }}",
             self.url,
             self.ip_version,
             self.method,
@@ -92,7 +91,8 @@ impl fmt::Display for ValidatedConfig {
             self.retry_policy.initial_delay.as_secs(),
             state_file_str,
             self.dry_run,
-            self.filter.len(),
+            self.filter.include_count(),
+            self.filter.exclude_count(),
         )
     }
 }
@@ -286,70 +286,96 @@ impl ValidatedConfig {
         Ok(())
     }
 
-    fn build_filter(cli: &Cli, toml: Option<&TomlConfig>) -> Result<CompositeFilter, ConfigError> {
-        let mut filter = CompositeFilter::new();
+    fn build_filter(cli: &Cli, toml: Option<&TomlConfig>) -> Result<FilterChain, ConfigError> {
+        let mut chain = FilterChain::new();
 
-        // Always exclude loopback
-        filter = filter.with(ExcludeLoopbackFilter);
+        // Collect all kinds from CLI and TOML (CLI replaces TOML)
+        let include_kinds: HashSet<AdapterKind> = Self::collect_kinds(
+            &cli.include_kinds,
+            toml.map(|t| &t.filter.include_kinds),
+            !cli.include_kinds.is_empty(),
+        )?;
+        let exclude_kinds: HashSet<AdapterKind> = Self::collect_kinds(
+            &cli.exclude_kinds,
+            toml.map(|t| &t.filter.exclude_kinds),
+            !cli.exclude_kinds.is_empty(),
+        )?;
 
-        // Exclude virtual if CLI flag or TOML setting
-        let exclude_virtual = cli.exclude_virtual || toml.is_some_and(|t| t.filter.exclude_virtual);
-
-        if exclude_virtual {
-            filter = filter.with(ExcludeVirtualFilter);
+        // Default: exclude loopback UNLESS explicitly included
+        if !include_kinds.contains(&AdapterKind::Loopback) {
+            chain = chain.exclude(KindFilter::new([AdapterKind::Loopback]));
         }
 
-        // Add include patterns from CLI
-        for pattern in &cli.include_adapters {
+        // Add kind excludes
+        if !exclude_kinds.is_empty() {
+            chain = chain.exclude(KindFilter::new(exclude_kinds));
+        }
+
+        // Add kind includes
+        if !include_kinds.is_empty() {
+            chain = chain.include(KindFilter::new(include_kinds));
+        }
+
+        // Collect name patterns (CLI replaces TOML)
+        let exclude_patterns = if cli.exclude_adapters.is_empty() {
+            toml.map_or(&[][..], |t| t.filter.exclude.as_slice())
+        } else {
+            cli.exclude_adapters.as_slice()
+        };
+
+        let include_patterns = if cli.include_adapters.is_empty() {
+            toml.map_or(&[][..], |t| t.filter.include.as_slice())
+        } else {
+            cli.include_adapters.as_slice()
+        };
+
+        // Add name excludes
+        for pattern in exclude_patterns {
             let regex_filter =
-                NameRegexFilter::include(pattern).map_err(|e| ConfigError::InvalidRegex {
+                NameRegexFilter::new(pattern).map_err(|e| ConfigError::InvalidRegex {
                     pattern: pattern.clone(),
                     source: e,
                 })?;
-            filter = filter.with(regex_filter);
+            chain = chain.exclude(regex_filter);
         }
 
-        // Add include patterns from TOML (if CLI didn't provide any)
-        if cli.include_adapters.is_empty() {
-            if let Some(toml) = toml {
-                for pattern in &toml.filter.include {
-                    let regex_filter = NameRegexFilter::include(pattern).map_err(|e| {
-                        ConfigError::InvalidRegex {
-                            pattern: pattern.clone(),
-                            source: e,
-                        }
-                    })?;
-                    filter = filter.with(regex_filter);
-                }
-            }
-        }
-
-        // Add exclude patterns from CLI
-        for pattern in &cli.exclude_adapters {
+        // Add name includes
+        for pattern in include_patterns {
             let regex_filter =
-                NameRegexFilter::exclude(pattern).map_err(|e| ConfigError::InvalidRegex {
+                NameRegexFilter::new(pattern).map_err(|e| ConfigError::InvalidRegex {
                     pattern: pattern.clone(),
                     source: e,
                 })?;
-            filter = filter.with(regex_filter);
+            chain = chain.include(regex_filter);
         }
 
-        // Add exclude patterns from TOML (if CLI didn't provide any)
-        if cli.exclude_adapters.is_empty() {
-            if let Some(toml) = toml {
-                for pattern in &toml.filter.exclude {
-                    let regex_filter = NameRegexFilter::exclude(pattern).map_err(|e| {
-                        ConfigError::InvalidRegex {
-                            pattern: pattern.clone(),
-                            source: e,
-                        }
-                    })?;
-                    filter = filter.with(regex_filter);
-                }
+        Ok(chain)
+    }
+
+    /// Collects adapter kinds from CLI and/or TOML.
+    ///
+    /// If `cli_replaces` is true, only CLI kinds are used; otherwise TOML kinds are used.
+    fn collect_kinds(
+        cli_kinds: &[AdapterKindArg],
+        toml_kinds: Option<&Vec<String>>,
+        cli_replaces: bool,
+    ) -> Result<HashSet<AdapterKind>, ConfigError> {
+        let mut kinds = HashSet::new();
+
+        if cli_replaces || toml_kinds.is_none() {
+            // Use CLI kinds
+            for kind in cli_kinds {
+                kinds.insert((*kind).into());
+            }
+        } else if let Some(toml_list) = toml_kinds {
+            // Use TOML kinds
+            for kind_str in toml_list {
+                let kind = parse_adapter_kind(kind_str)?;
+                kinds.insert(kind);
             }
         }
 
-        Ok(filter)
+        Ok(kinds)
     }
 
     fn resolve_poll_interval(
@@ -499,6 +525,18 @@ fn parse_ip_version(s: &str) -> Result<IpVersion, ConfigError> {
         "ipv6" | "v6" | "6" => Ok(IpVersion::V6),
         "both" | "all" | "dual" => Ok(IpVersion::Both),
         _ => Err(ConfigError::InvalidIpVersion {
+            value: s.to_string(),
+        }),
+    }
+}
+
+fn parse_adapter_kind(s: &str) -> Result<AdapterKind, ConfigError> {
+    match s.to_lowercase().as_str() {
+        "ethernet" => Ok(AdapterKind::Ethernet),
+        "wireless" => Ok(AdapterKind::Wireless),
+        "virtual" => Ok(AdapterKind::Virtual),
+        "loopback" => Ok(AdapterKind::Loopback),
+        _ => Err(ConfigError::InvalidAdapterKind {
             value: s.to_string(),
         }),
     }

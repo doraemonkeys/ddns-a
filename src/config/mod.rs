@@ -27,7 +27,7 @@
 //!
 //! # Boolean Flag Semantics
 //!
-//! Boolean flags (`--poll-only`, `--exclude-virtual`) use OR semantics:
+//! Boolean flags (`--poll-only`, `--dry-run`) use OR semantics:
 //! - If set `true` in either CLI or TOML, the result is `true`.
 //! - Once set `true` in TOML, CLI cannot override to `false` (flags only enable, not disable).
 //! - This differs from other options where "CLI explicit > TOML".
@@ -61,7 +61,7 @@ mod toml_tests;
 #[path = "validated_tests/mod.rs"]
 mod validated_tests;
 
-pub use cli::{Cli, Command, IpVersionArg};
+pub use cli::{AdapterKindArg, Cli, Command, IpVersionArg};
 pub use error::{ConfigError, field};
 pub use toml::{TomlConfig, default_config_template};
 pub use validated::{ValidatedConfig, write_default_config};
