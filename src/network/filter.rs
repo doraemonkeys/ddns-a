@@ -22,7 +22,7 @@ use super::{AdapterKind, AdapterSnapshot, AddressFetcher, FetchError};
 /// Trait for filtering network adapters.
 ///
 /// Implementations determine which adapters should be included in monitoring.
-/// Filters are composable via [`CompositeFilter`].
+/// Filters are composable via [`FilterChain`].
 ///
 /// # Thread Safety
 ///
@@ -106,8 +106,6 @@ impl AdapterFilter for KindFilter {
 /// 1. **Exclude filters (AND)**: Any match → reject. Adapter must pass ALL excludes.
 /// 2. **Include filters (OR)**: Any match → accept. Adapter needs to pass ANY include.
 ///    Empty includes = match all (passthrough).
-///
-/// This replaces [`CompositeFilter`] which only supported AND composition.
 ///
 /// # Examples
 ///
@@ -226,10 +224,6 @@ impl std::fmt::Debug for FilterChain {
 #[derive(Debug)]
 pub struct NameRegexFilter {
     pattern: Regex,
-    /// Deprecated: used only for backward compatibility with `include()`/`exclude()` methods.
-    /// When `None`, the filter is a pure matcher (new behavior).
-    /// When `Some(true)`, the filter inverts the match (legacy exclude mode).
-    invert: bool,
 }
 
 impl NameRegexFilter {
@@ -241,38 +235,6 @@ impl NameRegexFilter {
     pub fn new(pattern: &str) -> Result<Self, regex::Error> {
         Ok(Self {
             pattern: Regex::new(pattern)?,
-            invert: false,
-        })
-    }
-
-    /// Creates an include filter (deprecated - use `new()` with `FilterChain::include()`).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the regex pattern is invalid.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use FilterChain::include(NameRegexFilter::new(...)) instead"
-    )]
-    pub fn include(pattern: &str) -> Result<Self, regex::Error> {
-        // Include mode: matches() returns true if name matches (no inversion)
-        Self::new(pattern)
-    }
-
-    /// Creates an exclude filter (deprecated - use `new()` with `FilterChain::exclude()`).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the regex pattern is invalid.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use FilterChain::exclude(NameRegexFilter::new(...)) instead"
-    )]
-    pub fn exclude(pattern: &str) -> Result<Self, regex::Error> {
-        // Exclude mode: matches() returns true if name does NOT match (inverted)
-        Ok(Self {
-            pattern: Regex::new(pattern)?,
-            invert: true,
         })
     }
 
@@ -286,151 +248,13 @@ impl NameRegexFilter {
 
 impl AdapterFilter for NameRegexFilter {
     fn matches(&self, adapter: &AdapterSnapshot) -> bool {
-        let is_match = self.pattern.is_match(&adapter.name);
-        if self.invert { !is_match } else { is_match }
+        self.pattern.is_match(&adapter.name)
     }
 }
 
 // ============================================================================
-// DEPRECATED TYPES - Will be removed in future versions
+// FilteredFetcher - Decorator for AddressFetcher
 // ============================================================================
-
-/// Filter mode for name-based filtering.
-#[deprecated(since = "0.2.0", note = "Use FilterChain with NameRegexFilter instead")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FilterMode {
-    /// Adapter name must match the pattern to be included.
-    Include,
-    /// Adapter name must NOT match the pattern to be included.
-    Exclude,
-}
-
-/// Filters out virtual adapters.
-///
-/// Use this filter to exclude `VMware`, `VirtualBox`, Hyper-V, WSL, and similar
-/// virtual network interfaces.
-///
-/// # Examples
-///
-/// ```
-/// use ddns_a::network::filter::{ExcludeVirtualFilter, AdapterFilter};
-/// use ddns_a::network::{AdapterSnapshot, AdapterKind};
-///
-/// let filter = ExcludeVirtualFilter;
-///
-/// let physical = AdapterSnapshot::new("eth0", AdapterKind::Ethernet, vec![], vec![]);
-/// let virtual_adapter = AdapterSnapshot::new("vEthernet", AdapterKind::Virtual, vec![], vec![]);
-///
-/// assert!(filter.matches(&physical));
-/// assert!(!filter.matches(&virtual_adapter));
-/// ```
-#[deprecated(
-    since = "0.2.0",
-    note = "Use FilterChain::exclude(KindFilter::new([AdapterKind::Virtual])) instead"
-)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExcludeVirtualFilter;
-
-#[allow(deprecated)]
-impl AdapterFilter for ExcludeVirtualFilter {
-    fn matches(&self, adapter: &AdapterSnapshot) -> bool {
-        !adapter.kind.is_virtual()
-    }
-}
-
-/// Filters out loopback adapters.
-///
-/// # Examples
-///
-/// ```
-/// use ddns_a::network::filter::{ExcludeLoopbackFilter, AdapterFilter};
-/// use ddns_a::network::{AdapterSnapshot, AdapterKind};
-///
-/// let filter = ExcludeLoopbackFilter;
-///
-/// let ethernet = AdapterSnapshot::new("eth0", AdapterKind::Ethernet, vec![], vec![]);
-/// let loopback = AdapterSnapshot::new("lo", AdapterKind::Loopback, vec![], vec![]);
-///
-/// assert!(filter.matches(&ethernet));
-/// assert!(!filter.matches(&loopback));
-/// ```
-#[deprecated(
-    since = "0.2.0",
-    note = "Use FilterChain::exclude(KindFilter::new([AdapterKind::Loopback])) instead"
-)]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ExcludeLoopbackFilter;
-
-#[allow(deprecated)]
-impl AdapterFilter for ExcludeLoopbackFilter {
-    fn matches(&self, adapter: &AdapterSnapshot) -> bool {
-        !adapter.kind.is_loopback()
-    }
-}
-
-/// A composite filter that ANDs multiple filters together.
-///
-/// An adapter passes the composite filter only if it passes ALL contained filters.
-/// An empty composite filter matches all adapters.
-///
-/// # Deprecated
-///
-/// This filter has incorrect semantics for multiple include patterns (AND instead of OR).
-/// Use [`FilterChain`] instead which implements correct include/exclude semantics.
-#[deprecated(
-    since = "0.2.0",
-    note = "Use FilterChain instead, which has correct include OR / exclude AND semantics"
-)]
-#[derive(Default)]
-pub struct CompositeFilter {
-    #[allow(deprecated)]
-    filters: Vec<Box<dyn AdapterFilter>>,
-}
-
-#[allow(deprecated)]
-impl CompositeFilter {
-    /// Creates an empty composite filter (matches all adapters).
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Adds a filter to the composition (builder pattern).
-    #[must_use]
-    pub fn with<F: AdapterFilter + 'static>(mut self, filter: F) -> Self {
-        self.filters.push(Box::new(filter));
-        self
-    }
-
-    /// Returns the number of filters in the composition.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.filters.len()
-    }
-
-    /// Returns `true` if no filters are configured.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.filters.is_empty()
-    }
-}
-
-#[allow(deprecated)]
-impl AdapterFilter for CompositeFilter {
-    fn matches(&self, adapter: &AdapterSnapshot) -> bool {
-        self.filters.iter().all(|f| f.matches(adapter))
-    }
-}
-
-// Manual Debug impl since Box<dyn AdapterFilter> doesn't implement Debug
-#[allow(deprecated)]
-impl std::fmt::Debug for CompositeFilter {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompositeFilter")
-            .field("filter_count", &self.filters.len())
-            .finish()
-    }
-}
 
 /// A fetcher decorator that applies a filter to results.
 ///
@@ -445,11 +269,13 @@ impl std::fmt::Debug for CompositeFilter {
 /// # Examples
 ///
 /// ```ignore
-/// use ddns_a::network::filter::{FilteredFetcher, ExcludeVirtualFilter};
-/// use ddns_a::network::platform::WindowsFetcher;
+/// use ddns_a::network::filter::{FilteredFetcher, FilterChain, KindFilter};
+/// use ddns_a::network::{AdapterKind, platform::WindowsFetcher};
 ///
-/// let fetcher = FilteredFetcher::new(WindowsFetcher::new(), ExcludeVirtualFilter);
-/// let adapters = fetcher.fetch()?; // Only non-virtual adapters
+/// let filter = FilterChain::new()
+///     .exclude(KindFilter::new([AdapterKind::Virtual, AdapterKind::Loopback]));
+/// let fetcher = FilteredFetcher::new(WindowsFetcher::new(), filter);
+/// let adapters = fetcher.fetch()?; // Only non-virtual, non-loopback adapters
 /// ```
 #[derive(Debug)]
 pub struct FilteredFetcher<F, A> {

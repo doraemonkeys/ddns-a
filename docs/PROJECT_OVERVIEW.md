@@ -9,7 +9,7 @@
 |--------|---------|
 | `config` | `Cli` (clap), `TomlConfig`, `ValidatedConfig`, `ConfigError`; `defaults` submodule |
 | `network` | `AdapterSnapshot`, `AdapterKind`, `IpVersion`; `AddressFetcher` trait; `FetchError` |
-| `network::filter` | `AdapterFilter` trait; `NameRegexFilter`, `ExcludeVirtualFilter`, `ExcludeLoopbackFilter`; `CompositeFilter`; `FilteredFetcher` decorator |
+| `network::filter` | `AdapterFilter` trait; `KindFilter`, `NameRegexFilter`; `FilterChain` (include OR / exclude AND); `FilteredFetcher` decorator |
 | `network::platform` | `WindowsFetcher` (Windows, `GetAdaptersAddresses`); `PlatformFetcher` alias |
 | `monitor` | `IpChange`, `diff()`; `DebouncePolicy`; `PollingMonitor`/`HybridMonitor`; `ApiListener` trait; `MonitorError`, `ApiError` |
 | `monitor::platform` | `WindowsApiListener` (Windows, `NotifyIpInterfaceChange`); `PlatformListener` alias |
@@ -31,10 +31,10 @@ FetchError::WindowsApi | PermissionDenied | Platform
 
 // Filtering
 AdapterFilter trait { fn matches(&self, adapter: &AdapterSnapshot) -> bool }
-FilterMode::Include | Exclude
-NameRegexFilter::include(pattern) | exclude(pattern)
-ExcludeVirtualFilter, ExcludeLoopbackFilter  // Unit filters
-CompositeFilter::new().with(filter)  // AND composition
+KindFilter::new([AdapterKind::Ethernet, AdapterKind::Wireless])  // Pure matcher by kind
+NameRegexFilter::new(pattern)  // Pure matcher by name regex
+FilterChain::new().exclude(filter).include(filter)  // Exclude AND, Include OR semantics
+  // Loopback excluded by default unless explicitly included
 FilteredFetcher<F, A>  // AddressFetcher decorator
 
 // Monitor
@@ -84,10 +84,10 @@ StateStore trait { fn load(&self) -> LoadResult; async fn save(&self, snapshots)
 FileStateStore::new(path).path().load().save()  // Atomic write with .tmp rename, auto-creates parent dirs
 
 // Config
-Cli { url, ip_version, method, headers, bearer, body_template, poll_interval, retry_*, state_file }
+Cli { url, ip_version, method, headers, bearer, body_template, include/exclude_adapters, include/exclude_kinds, poll_interval, retry_*, state_file }
 Command::Init { output }
 TomlConfig { webhook, filter, monitor, retry }  // load(path), parse(content)
-ValidatedConfig { ip_version, url, method, headers, filter, poll_interval, retry_*, state_file }
+ValidatedConfig { ip_version, url, method, headers, filter: FilterChain, poll_interval, retry_*, state_file }
   // from_raw(&Cli, Option<&TomlConfig>), load(&Cli)
   // Priority: CLI > TOML > defaults
 ConfigError::FileRead | TomlParse | MissingRequired | InvalidUrl | InvalidRegex | InvalidTemplate | ...
