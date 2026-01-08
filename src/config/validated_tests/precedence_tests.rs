@@ -41,8 +41,8 @@ mod cli_precedence {
 
     #[test]
     fn cli_exclude_kind_replaces_toml() {
-        use crate::network::{AdapterKind, AdapterSnapshot};
         use crate::network::filter::AdapterFilter;
+        use crate::network::{AdapterKind, AdapterSnapshot};
 
         let cli = cli(&[
             "--url",

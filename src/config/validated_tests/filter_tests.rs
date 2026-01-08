@@ -1,7 +1,7 @@
 //! Tests for adapter filtering configuration.
 
-use crate::network::{AdapterKind, AdapterSnapshot};
 use crate::network::filter::AdapterFilter;
+use crate::network::{AdapterKind, AdapterSnapshot};
 
 use super::*;
 
@@ -37,7 +37,8 @@ mod filter_building {
         assert!(config.filter.exclude_count() >= 2);
 
         // Verify virtual adapter is rejected
-        let virtual_adapter = AdapterSnapshot::new("vEthernet", AdapterKind::Virtual, vec![], vec![]);
+        let virtual_adapter =
+            AdapterSnapshot::new("vEthernet", AdapterKind::Virtual, vec![], vec![]);
         assert!(!config.filter.matches(&virtual_adapter));
     }
 
@@ -55,7 +56,8 @@ mod filter_building {
 
         let ethernet = AdapterSnapshot::new("eth0", AdapterKind::Ethernet, vec![], vec![]);
         let wireless = AdapterSnapshot::new("wlan0", AdapterKind::Wireless, vec![], vec![]);
-        let virtual_adapter = AdapterSnapshot::new("vEthernet", AdapterKind::Virtual, vec![], vec![]);
+        let virtual_adapter =
+            AdapterSnapshot::new("vEthernet", AdapterKind::Virtual, vec![], vec![]);
 
         assert!(config.filter.matches(&ethernet));
         assert!(config.filter.matches(&wireless));
@@ -286,7 +288,10 @@ mod filter_toml_kinds {
         );
         let result = ValidatedConfig::from_raw(&cli, Some(&toml));
 
-        assert!(matches!(result, Err(ConfigError::InvalidAdapterKind { .. })));
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidAdapterKind { .. })
+        ));
     }
 
     #[test]
