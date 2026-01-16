@@ -1,6 +1,6 @@
 //! Tests for CLI argument parsing.
 
-use super::cli::{AdapterKindArg, Cli, Command, IpVersionArg};
+use super::cli::{AdapterKindArg, ChangeKindArg, Cli, Command, IpVersionArg};
 
 mod parsing {
     use super::*;
@@ -29,6 +29,18 @@ mod parsing {
 
         let both = Cli::parse_from_iter(["ddns-a", "--ip-version", "both"]);
         assert_eq!(both.ip_version, Some(IpVersionArg::Both));
+    }
+
+    #[test]
+    fn parse_all_change_kinds() {
+        let added = Cli::parse_from_iter(["ddns-a", "--change-kind", "added"]);
+        assert_eq!(added.change_kind, Some(ChangeKindArg::Added));
+
+        let removed = Cli::parse_from_iter(["ddns-a", "--change-kind", "removed"]);
+        assert_eq!(removed.change_kind, Some(ChangeKindArg::Removed));
+
+        let both = Cli::parse_from_iter(["ddns-a", "--change-kind", "both"]);
+        assert_eq!(both.change_kind, Some(ChangeKindArg::Both));
     }
 
     #[test]
@@ -128,6 +140,7 @@ mod parsing {
         assert!(cli.poll_interval.is_none());
         assert!(cli.retry_max.is_none());
         assert!(cli.retry_delay.is_none());
+        assert!(cli.change_kind.is_none());
         // Boolean flags default to false
         assert!(!cli.poll_only);
         assert!(!cli.dry_run);
@@ -257,6 +270,69 @@ mod adapter_kind_arg {
         set.insert(AdapterKindArg::Wireless);
         assert!(set.contains(&AdapterKindArg::Ethernet));
         assert!(!set.contains(&AdapterKindArg::Virtual));
+    }
+}
+
+mod change_kind_arg {
+    use super::*;
+    use crate::monitor::ChangeKind;
+    use clap::ValueEnum;
+
+    #[test]
+    fn parse_added() {
+        let kind = ChangeKindArg::from_str("added", false).unwrap();
+        assert_eq!(kind, ChangeKindArg::Added);
+    }
+
+    #[test]
+    fn parse_removed() {
+        let kind = ChangeKindArg::from_str("removed", false).unwrap();
+        assert_eq!(kind, ChangeKindArg::Removed);
+    }
+
+    #[test]
+    fn parse_both() {
+        let kind = ChangeKindArg::from_str("both", false).unwrap();
+        assert_eq!(kind, ChangeKindArg::Both);
+    }
+
+    #[test]
+    fn parse_invalid_returns_error() {
+        let result = ChangeKindArg::from_str("unknown", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_change_kind_arg_added() {
+        let kind: ChangeKind = ChangeKindArg::Added.into();
+        assert_eq!(kind, ChangeKind::Added);
+    }
+
+    #[test]
+    fn from_change_kind_arg_removed() {
+        let kind: ChangeKind = ChangeKindArg::Removed.into();
+        assert_eq!(kind, ChangeKind::Removed);
+    }
+
+    #[test]
+    fn from_change_kind_arg_both() {
+        let kind: ChangeKind = ChangeKindArg::Both.into();
+        assert_eq!(kind, ChangeKind::Both);
+    }
+
+    #[test]
+    fn debug_impl_works() {
+        let debug_str = format!("{:?}", ChangeKindArg::Added);
+        assert!(debug_str.contains("Added"));
+    }
+
+    #[test]
+    fn clone_works() {
+        let kind = ChangeKindArg::Removed;
+        // Intentionally testing Clone trait implementation on a Copy type
+        #[allow(clippy::clone_on_copy)]
+        let cloned = kind.clone();
+        assert_eq!(kind, cloned);
     }
 }
 

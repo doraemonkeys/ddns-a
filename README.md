@@ -75,6 +75,7 @@ Filter:
     --exclude-adapter <PATTERN>  Exclude adapters matching regex
     --include-kind <KIND>        Include adapters by kind (ethernet, wireless, virtual, loopback)
     --exclude-kind <KIND>        Exclude adapters by kind
+    --change-kind <KIND>         Filter by change type: added | removed | both (default: both)
 
 Monitor:
     --poll-interval <SEC>        Polling interval (default: 60)
@@ -103,15 +104,15 @@ By default (without any filter options):
 | Loopback (127.0.0.1 / ::1) | ❌ No (excluded by default) |
 
 **Note**: Loopback is excluded by default. Use `--include-kind loopback` to monitor it.  
-**Recommendation**: Use `--exclude-kind virtual` to skip virtual adapters in most cases.
+**Recommendation**: Use `--include-kind ethernet,wireless` to monitor only physical adapters. Virtual adapters (Hyper-V, VMware, Mobile Hotspot) are automatically detected via Windows `HardwareInterface` flag.
 
 ### Filter Examples
 
 ```bash
-# Exclude virtual adapters (recommended)
+# Exclude virtual adapters
 ddns-a --url ... --ip-version ipv6 --exclude-kind virtual
 
-# Monitor only Ethernet and Wireless adapters
+# Monitor only physical Ethernet and Wireless adapters (auto-excludes Hyper-V, VMware, etc.)
 ddns-a --url ... --ip-version ipv6 --include-kind ethernet,wireless
 
 # Monitor only adapters matching regex
@@ -121,6 +122,9 @@ ddns-a --url ... --ip-version ipv6 --include-adapter "^Ethernet$"
 ddns-a --url ... --ip-version both \
        --exclude-kind virtual \
        --exclude-adapter "^Docker"
+
+# Only report newly added IPs (ignore removals)
+ddns-a --url ... --ip-version ipv6 --change-kind added
 ```
 
 ## Configuration File
@@ -155,6 +159,7 @@ exclude_kinds = ["virtual"]
 poll_interval = 60
 poll_only = false
 # state_file = "ddns-a-state.json"
+# change_kind = "both"  # added | removed | both
 
 [retry]
 max_attempts = 3

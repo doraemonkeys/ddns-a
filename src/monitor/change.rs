@@ -14,6 +14,20 @@ pub enum IpChangeKind {
     Removed,
 }
 
+/// Filter for change kinds.
+///
+/// Determines which types of IP address changes to report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChangeKind {
+    /// Report only IP addresses that were added
+    Added,
+    /// Report only IP addresses that were removed
+    Removed,
+    /// Report both added and removed IP addresses (default)
+    #[default]
+    Both,
+}
+
 /// An IP address change event.
 ///
 /// Represents a single IP address being added or removed from a network adapter.
@@ -112,6 +126,26 @@ pub fn filter_by_version(changes: Vec<IpChange>, version: IpVersion) -> Vec<IpCh
             .into_iter()
             .filter(|c| c.matches_version(version))
             .collect(),
+    }
+}
+
+/// Filters IP changes by the specified change kind.
+///
+/// Returns only changes that match the specified kind:
+/// - `Added`: only "added" changes
+/// - `Removed`: only "removed" changes
+/// - `Both`: all changes (no filtering)
+///
+/// # Arguments
+///
+/// * `changes` - The changes to filter
+/// * `kind` - The change kind filter to apply
+#[must_use]
+pub fn filter_by_change_kind(changes: Vec<IpChange>, kind: ChangeKind) -> Vec<IpChange> {
+    match kind {
+        ChangeKind::Both => changes,
+        ChangeKind::Added => changes.into_iter().filter(IpChange::is_added).collect(),
+        ChangeKind::Removed => changes.into_iter().filter(IpChange::is_removed).collect(),
     }
 }
 

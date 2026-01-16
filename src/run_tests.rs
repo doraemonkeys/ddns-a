@@ -89,6 +89,29 @@ mod runtime_options {
         let options = RuntimeOptions::from(&config);
         assert_eq!(options.ip_version, ddns_a::network::IpVersion::V4);
     }
+
+    #[test]
+    fn from_config_extracts_change_kind_default() {
+        let config = make_test_config();
+        let options = RuntimeOptions::from(&config);
+        assert_eq!(options.change_kind, ddns_a::monitor::ChangeKind::Both);
+    }
+
+    #[test]
+    fn from_config_extracts_change_kind_added() {
+        let cli = Cli::parse_from_iter([
+            "ddns-a",
+            "--url",
+            "https://example.com/hook",
+            "--ip-version",
+            "ipv4",
+            "--change-kind",
+            "added",
+        ]);
+        let config = ValidatedConfig::from_raw(&cli, None).unwrap();
+        let options = RuntimeOptions::from(&config);
+        assert_eq!(options.change_kind, ddns_a::monitor::ChangeKind::Added);
+    }
 }
 
 mod create_webhook {
@@ -149,6 +172,7 @@ mod create_webhook {
 
 mod detect_startup_changes {
     use super::*;
+    use ddns_a::monitor::ChangeKind;
     use ddns_a::network::{AdapterKind, AdapterSnapshot, IpVersion};
     use ddns_a::state::{LoadResult, StateError, StateStore};
     use std::net::Ipv4Addr;
@@ -200,15 +224,27 @@ mod detect_startup_changes {
         )
     }
 
+    fn make_options(ip_version: IpVersion, change_kind: ChangeKind) -> RuntimeOptions {
+        RuntimeOptions {
+            ip_version,
+            change_kind,
+            poll_interval: Duration::from_secs(60),
+            poll_only: false,
+            dry_run: false,
+            state_file: None,
+        }
+    }
+
     #[test]
     fn returns_empty_when_no_previous_state() {
         let store = MockStateStore::not_found();
         let current = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let options = make_options(IpVersion::Both, ChangeKind::Both);
 
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &current,
-            IpVersion::Both,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
 
@@ -219,11 +255,12 @@ mod detect_startup_changes {
     fn returns_empty_when_state_corrupted() {
         let store = MockStateStore::corrupted("test corruption");
         let current = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let options = make_options(IpVersion::Both, ChangeKind::Both);
 
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &current,
-            IpVersion::Both,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
 
@@ -234,11 +271,12 @@ mod detect_startup_changes {
     fn returns_empty_when_no_changes() {
         let snapshots = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
         let store = MockStateStore::with_loaded(snapshots.clone());
+        let options = make_options(IpVersion::Both, ChangeKind::Both);
 
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &snapshots,
-            IpVersion::Both,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
 
@@ -253,11 +291,12 @@ mod detect_startup_changes {
             snapshot_with_ipv4("eth1", "10.0.0.1"),
         ];
         let store = MockStateStore::with_loaded(saved);
+        let options = make_options(IpVersion::Both, ChangeKind::Both);
 
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &current,
-            IpVersion::Both,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
 
@@ -274,11 +313,12 @@ mod detect_startup_changes {
         ];
         let current = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
         let store = MockStateStore::with_loaded(saved);
+        let options = make_options(IpVersion::Both, ChangeKind::Both);
 
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &current,
-            IpVersion::Both,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
 
@@ -301,10 +341,11 @@ mod detect_startup_changes {
         let store = MockStateStore::with_loaded(saved);
 
         // V4 only
+        let options = make_options(IpVersion::V4, ChangeKind::Both);
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &current,
-            IpVersion::V4,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
         assert_eq!(changes.len(), 1);
@@ -312,14 +353,82 @@ mod detect_startup_changes {
 
         // V6 only
         let store = MockStateStore::with_loaded(vec![]);
+        let options = make_options(IpVersion::V6, ChangeKind::Both);
         let changes = detect_startup_changes_with_timestamp(
             &store,
             &current,
-            IpVersion::V6,
+            &options,
             SystemTime::UNIX_EPOCH,
         );
         assert_eq!(changes.len(), 1);
         assert!(changes[0].address.is_ipv6());
+    }
+
+    #[test]
+    fn filters_by_change_kind_added_only() {
+        // Test filtering to only Added changes
+        let saved = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let current = vec![
+            snapshot_with_ipv4("eth0", "192.168.1.2"), // Changed IP (old removed, new added)
+        ];
+        let store = MockStateStore::with_loaded(saved);
+        let options = make_options(IpVersion::Both, ChangeKind::Added);
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            &options,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        // Should only include the Added change
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].is_added());
+        assert_eq!(changes[0].address.to_string(), "192.168.1.2");
+    }
+
+    #[test]
+    fn filters_by_change_kind_removed_only() {
+        // Test filtering to only Removed changes
+        let saved = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let current = vec![
+            snapshot_with_ipv4("eth0", "192.168.1.2"), // Changed IP (old removed, new added)
+        ];
+        let store = MockStateStore::with_loaded(saved);
+        let options = make_options(IpVersion::Both, ChangeKind::Removed);
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            &options,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        // Should only include the Removed change
+        assert_eq!(changes.len(), 1);
+        assert!(changes[0].is_removed());
+        assert_eq!(changes[0].address.to_string(), "192.168.1.1");
+    }
+
+    #[test]
+    fn filters_by_change_kind_both() {
+        // Test Both filter includes all changes
+        let saved = vec![snapshot_with_ipv4("eth0", "192.168.1.1")];
+        let current = vec![
+            snapshot_with_ipv4("eth0", "192.168.1.2"), // Changed IP (old removed, new added)
+        ];
+        let store = MockStateStore::with_loaded(saved);
+        let options = make_options(IpVersion::Both, ChangeKind::Both);
+
+        let changes = detect_startup_changes_with_timestamp(
+            &store,
+            &current,
+            &options,
+            SystemTime::UNIX_EPOCH,
+        );
+
+        // Should include both Added and Removed changes
+        assert_eq!(changes.len(), 2);
     }
 }
 

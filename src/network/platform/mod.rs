@@ -12,6 +12,9 @@
 #[cfg(windows)]
 mod windows;
 
+#[cfg(all(windows, test))]
+mod windows_tests;
+
 #[cfg(windows)]
 pub use windows::WindowsFetcher;
 

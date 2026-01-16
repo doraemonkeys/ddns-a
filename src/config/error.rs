@@ -92,6 +92,13 @@ pub enum ConfigError {
         value: String,
     },
 
+    /// Invalid change kind value.
+    #[error("Invalid change kind '{value}': expected added, removed, or both")]
+    InvalidChangeKind {
+        /// The invalid value provided
+        value: String,
+    },
+
     /// Invalid header format.
     #[error("Invalid header format '{value}': expected 'Key=Value' or 'Key: Value'")]
     InvalidHeader {

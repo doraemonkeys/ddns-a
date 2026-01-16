@@ -492,3 +492,143 @@ mod ip_change_version_methods {
         assert!(change.matches_version(IpVersion::Both));
     }
 }
+
+mod change_kind {
+    use super::*;
+
+    #[test]
+    fn added_variant_exists() {
+        let kind = ChangeKind::Added;
+        assert!(matches!(kind, ChangeKind::Added));
+    }
+
+    #[test]
+    fn removed_variant_exists() {
+        let kind = ChangeKind::Removed;
+        assert!(matches!(kind, ChangeKind::Removed));
+    }
+
+    #[test]
+    fn both_variant_exists() {
+        let kind = ChangeKind::Both;
+        assert!(matches!(kind, ChangeKind::Both));
+    }
+
+    #[test]
+    fn default_is_both() {
+        let kind = ChangeKind::default();
+        assert_eq!(kind, ChangeKind::Both);
+    }
+
+    #[test]
+    fn equality_works() {
+        assert_eq!(ChangeKind::Added, ChangeKind::Added);
+        assert_eq!(ChangeKind::Removed, ChangeKind::Removed);
+        assert_eq!(ChangeKind::Both, ChangeKind::Both);
+        assert_ne!(ChangeKind::Added, ChangeKind::Removed);
+        assert_ne!(ChangeKind::Added, ChangeKind::Both);
+        assert_ne!(ChangeKind::Removed, ChangeKind::Both);
+    }
+
+    #[test]
+    fn copy_works() {
+        let kind = ChangeKind::Added;
+        let copied = kind;
+        assert_eq!(kind, copied);
+    }
+
+    #[test]
+    fn debug_format() {
+        assert_eq!(format!("{:?}", ChangeKind::Added), "Added");
+        assert_eq!(format!("{:?}", ChangeKind::Removed), "Removed");
+        assert_eq!(format!("{:?}", ChangeKind::Both), "Both");
+    }
+}
+
+mod filter_by_change_kind_function {
+    use super::*;
+
+    fn make_added_change(addr: &str) -> IpChange {
+        let address: IpAddr = addr.parse().unwrap();
+        IpChange::added("eth0", address, timestamp())
+    }
+
+    fn make_removed_change(addr: &str) -> IpChange {
+        let address: IpAddr = addr.parse().unwrap();
+        IpChange::removed("eth0", address, timestamp())
+    }
+
+    #[test]
+    fn added_filter_keeps_only_added() {
+        let changes = vec![
+            make_added_change("192.168.1.1"),
+            make_removed_change("192.168.1.2"),
+            make_added_change("10.0.0.1"),
+        ];
+
+        let filtered = filter_by_change_kind(changes, ChangeKind::Added);
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(IpChange::is_added));
+    }
+
+    #[test]
+    fn removed_filter_keeps_only_removed() {
+        let changes = vec![
+            make_added_change("192.168.1.1"),
+            make_removed_change("192.168.1.2"),
+            make_removed_change("10.0.0.1"),
+        ];
+
+        let filtered = filter_by_change_kind(changes, ChangeKind::Removed);
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().all(IpChange::is_removed));
+    }
+
+    #[test]
+    fn both_filter_keeps_all() {
+        let changes = vec![
+            make_added_change("192.168.1.1"),
+            make_removed_change("192.168.1.2"),
+            make_added_change("10.0.0.1"),
+        ];
+
+        let filtered = filter_by_change_kind(changes, ChangeKind::Both);
+
+        assert_eq!(filtered.len(), 3);
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        let changes: Vec<IpChange> = vec![];
+
+        let filtered = filter_by_change_kind(changes, ChangeKind::Added);
+
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn added_filter_on_all_removed_returns_empty() {
+        let changes = vec![
+            make_removed_change("192.168.1.1"),
+            make_removed_change("10.0.0.1"),
+        ];
+
+        let filtered = filter_by_change_kind(changes, ChangeKind::Added);
+
+        assert!(filtered.is_empty());
+    }
+
+    #[test]
+    fn removed_filter_on_all_added_returns_empty() {
+        let changes = vec![
+            make_added_change("192.168.1.1"),
+            make_added_change("10.0.0.1"),
+        ];
+
+        let filtered = filter_by_change_kind(changes, ChangeKind::Removed);
+
+        assert!(filtered.is_empty());
+    }
+}

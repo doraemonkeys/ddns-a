@@ -91,6 +91,9 @@ pub struct MonitorSection {
 
     /// Path to state file for detecting changes across restarts
     pub state_file: Option<String>,
+
+    /// Filter changes by type: "added", "removed", or "both" (default: "both")
+    pub change_kind: Option<String>,
 }
 
 /// Retry policy configuration section.
@@ -193,6 +196,10 @@ poll_interval = 60
 # If set, the program will compare current IP addresses with the saved state
 # and trigger webhooks for any changes detected during the program restart
 # state_file = "ddns-a-state.json"
+
+# Filter changes by type (default: "both")
+# Accepted values: "added", "removed", "both"
+# change_kind = "both"
 
 [retry]
 # Maximum number of retry attempts (default: 3)

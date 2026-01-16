@@ -359,3 +359,172 @@ mod poll_only {
         assert!(config.poll_only);
     }
 }
+
+mod change_kind {
+    use super::*;
+    use crate::monitor::ChangeKind;
+
+    #[test]
+    fn default_is_both() {
+        let cli = cli(&["--url", "https://example.com", "--ip-version", "ipv4"]);
+        let config = ValidatedConfig::from_raw(&cli, None).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Both);
+    }
+
+    #[test]
+    fn cli_added() {
+        let cli = cli(&[
+            "--url",
+            "https://example.com",
+            "--ip-version",
+            "ipv4",
+            "--change-kind",
+            "added",
+        ]);
+        let config = ValidatedConfig::from_raw(&cli, None).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Added);
+    }
+
+    #[test]
+    fn cli_removed() {
+        let cli = cli(&[
+            "--url",
+            "https://example.com",
+            "--ip-version",
+            "ipv4",
+            "--change-kind",
+            "removed",
+        ]);
+        let config = ValidatedConfig::from_raw(&cli, None).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Removed);
+    }
+
+    #[test]
+    fn cli_both() {
+        let cli = cli(&[
+            "--url",
+            "https://example.com",
+            "--ip-version",
+            "ipv4",
+            "--change-kind",
+            "both",
+        ]);
+        let config = ValidatedConfig::from_raw(&cli, None).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Both);
+    }
+
+    #[test]
+    fn toml_added() {
+        let cli = cli(&["--url", "https://example.com", "--ip-version", "ipv4"]);
+        let toml = toml(
+            r#"
+            [monitor]
+            change_kind = "added"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml)).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Added);
+    }
+
+    #[test]
+    fn toml_removed() {
+        let cli = cli(&["--url", "https://example.com", "--ip-version", "ipv4"]);
+        let toml = toml(
+            r#"
+            [monitor]
+            change_kind = "removed"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml)).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Removed);
+    }
+
+    #[test]
+    fn toml_both() {
+        let cli = cli(&["--url", "https://example.com", "--ip-version", "ipv4"]);
+        let toml = toml(
+            r#"
+            [monitor]
+            change_kind = "both"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml)).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Both);
+    }
+
+    #[test]
+    fn toml_aliases_work() {
+        // Test "add" alias
+        let cli = cli(&["--url", "https://example.com", "--ip-version", "ipv4"]);
+        let toml_add = toml(
+            r#"
+            [monitor]
+            change_kind = "add"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml_add)).unwrap();
+        assert_eq!(config.change_kind, ChangeKind::Added);
+
+        // Test "remove" alias
+        let toml_remove = toml(
+            r#"
+            [monitor]
+            change_kind = "remove"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml_remove)).unwrap();
+        assert_eq!(config.change_kind, ChangeKind::Removed);
+
+        // Test "all" alias
+        let toml_all = toml(
+            r#"
+            [monitor]
+            change_kind = "all"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml_all)).unwrap();
+        assert_eq!(config.change_kind, ChangeKind::Both);
+    }
+
+    #[test]
+    fn cli_overrides_toml() {
+        let cli = cli(&[
+            "--url",
+            "https://example.com",
+            "--ip-version",
+            "ipv4",
+            "--change-kind",
+            "added",
+        ]);
+        let toml = toml(
+            r#"
+            [monitor]
+            change_kind = "removed"
+        "#,
+        );
+        let config = ValidatedConfig::from_raw(&cli, Some(&toml)).unwrap();
+
+        assert_eq!(config.change_kind, ChangeKind::Added);
+    }
+
+    #[test]
+    fn invalid_value_returns_error() {
+        let cli = cli(&["--url", "https://example.com", "--ip-version", "ipv4"]);
+        let toml = toml(
+            r#"
+            [monitor]
+            change_kind = "invalid"
+        "#,
+        );
+        let result = ValidatedConfig::from_raw(&cli, Some(&toml));
+
+        assert!(matches!(result, Err(ConfigError::InvalidChangeKind { .. })));
+    }
+}

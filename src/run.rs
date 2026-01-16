@@ -12,7 +12,8 @@ use tokio_stream::StreamExt;
 
 use ddns_a::config::ValidatedConfig;
 use ddns_a::monitor::{
-    DebouncePolicy, HybridMonitor, IpChange, PollingMonitor, diff, filter_by_version,
+    ChangeKind, DebouncePolicy, HybridMonitor, IpChange, PollingMonitor, diff,
+    filter_by_change_kind, filter_by_version,
 };
 use ddns_a::network::filter::{FilterChain, FilteredFetcher};
 use ddns_a::network::platform::PlatformFetcher;
@@ -56,6 +57,7 @@ pub enum RunError {
 /// allowing the config's `filter` field to be moved separately.
 struct RuntimeOptions {
     ip_version: IpVersion,
+    change_kind: ChangeKind,
     poll_interval: Duration,
     poll_only: bool,
     dry_run: bool,
@@ -66,6 +68,7 @@ impl From<&ValidatedConfig> for RuntimeOptions {
     fn from(config: &ValidatedConfig) -> Self {
         Self {
             ip_version: config.ip_version,
+            change_kind: config.change_kind,
             poll_interval: config.poll_interval,
             poll_only: config.poll_only,
             dry_run: config.dry_run,
@@ -152,7 +155,7 @@ async fn startup_change_detection<W: WebhookSender>(
     let current = fetcher.fetch().map_err(RunError::InitialFetch)?;
 
     // Compare with saved state
-    let startup_changes = detect_startup_changes(store, &current, options.ip_version);
+    let startup_changes = detect_startup_changes(store, &current, options);
 
     // Handle any detected changes
     if startup_changes.is_empty() {
@@ -179,9 +182,9 @@ async fn startup_change_detection<W: WebhookSender>(
 fn detect_startup_changes(
     store: &impl StateStore,
     current: &[AdapterSnapshot],
-    ip_version: IpVersion,
+    options: &RuntimeOptions,
 ) -> Vec<IpChange> {
-    detect_startup_changes_with_timestamp(store, current, ip_version, SystemTime::now())
+    detect_startup_changes_with_timestamp(store, current, options, SystemTime::now())
 }
 
 /// Compares current network state with saved state and returns changes.
@@ -190,13 +193,14 @@ fn detect_startup_changes(
 fn detect_startup_changes_with_timestamp(
     store: &impl StateStore,
     current: &[AdapterSnapshot],
-    ip_version: IpVersion,
+    options: &RuntimeOptions,
     timestamp: SystemTime,
 ) -> Vec<IpChange> {
     match store.load() {
         LoadResult::Loaded(saved) => {
             let changes = diff(&saved, current, timestamp);
-            filter_by_version(changes, ip_version)
+            let filtered = filter_by_version(changes, options.ip_version);
+            filter_by_change_kind(filtered, options.change_kind)
         }
         LoadResult::NotFound => {
             tracing::info!("No previous state found, starting fresh");
@@ -252,8 +256,9 @@ async fn run_polling_loop<W: WebhookSender>(
             changes = stream.next() => {
                 match changes {
                     Some(changes) => {
-                        // Filter by IP version before processing
+                        // Filter by IP version and change kind before processing
                         let filtered = filter_by_version(changes, options.ip_version);
+                        let filtered = filter_by_change_kind(filtered, options.change_kind);
                         if !filtered.is_empty() {
                             save_state_if_configured(state_store.as_ref(), stream.current_snapshot()).await;
                             handle_changes(&filtered, &webhook, options.dry_run).await;
@@ -326,8 +331,9 @@ async fn run_hybrid_loop<W: WebhookSender>(
 
                 match changes {
                     Some(changes) => {
-                        // Filter by IP version before processing
+                        // Filter by IP version and change kind before processing
                         let filtered = filter_by_version(changes, options.ip_version);
+                        let filtered = filter_by_change_kind(filtered, options.change_kind);
                         if !filtered.is_empty() {
                             save_state_if_configured(state_store.as_ref(), stream.current_snapshot()).await;
                             handle_changes(&filtered, &webhook, options.dry_run).await;

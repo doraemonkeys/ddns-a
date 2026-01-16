@@ -13,6 +13,7 @@ use http::header::{AUTHORIZATION, HeaderName, HeaderValue};
 use http::{HeaderMap, Method};
 use url::Url;
 
+use crate::monitor::ChangeKind;
 use crate::network::filter::{FilterChain, KindFilter, NameRegexFilter};
 use crate::network::{AdapterKind, IpVersion};
 use crate::webhook::RetryPolicy;
@@ -35,6 +36,9 @@ use super::toml::TomlConfig;
 pub struct ValidatedConfig {
     /// IP version to monitor (required)
     pub ip_version: IpVersion,
+
+    /// Change kind filter (Added/Removed/Both)
+    pub change_kind: ChangeKind,
 
     /// Webhook URL (required)
     pub url: Url,
@@ -114,6 +118,9 @@ impl ValidatedConfig {
         // Merge and validate IP version (required)
         let ip_version = Self::resolve_ip_version(cli, toml)?;
 
+        // Merge change kind filter (default: Both)
+        let change_kind = Self::resolve_change_kind(cli, toml)?;
+
         // Merge and validate URL (required)
         let url = Self::resolve_url(cli, toml)?;
 
@@ -143,6 +150,7 @@ impl ValidatedConfig {
 
         Ok(Self {
             ip_version,
+            change_kind,
             url,
             method,
             headers,
@@ -193,6 +201,26 @@ impl ValidatedConfig {
             field::IP_VERSION,
             "Use --ip-version or set webhook.ip_version in config file",
         ))
+    }
+
+    fn resolve_change_kind(
+        cli: &Cli,
+        toml: Option<&TomlConfig>,
+    ) -> Result<ChangeKind, ConfigError> {
+        // CLI takes precedence
+        if let Some(kind) = cli.change_kind {
+            return Ok(kind.into());
+        }
+
+        // Fall back to TOML
+        if let Some(toml) = toml {
+            if let Some(ref kind_str) = toml.monitor.change_kind {
+                return parse_change_kind(kind_str);
+            }
+        }
+
+        // Default to Both
+        Ok(ChangeKind::Both)
     }
 
     fn resolve_url(cli: &Cli, toml: Option<&TomlConfig>) -> Result<Url, ConfigError> {
@@ -537,6 +565,17 @@ fn parse_adapter_kind(s: &str) -> Result<AdapterKind, ConfigError> {
         "virtual" => Ok(AdapterKind::Virtual),
         "loopback" => Ok(AdapterKind::Loopback),
         _ => Err(ConfigError::InvalidAdapterKind {
+            value: s.to_string(),
+        }),
+    }
+}
+
+fn parse_change_kind(s: &str) -> Result<ChangeKind, ConfigError> {
+    match s.to_lowercase().as_str() {
+        "added" | "add" => Ok(ChangeKind::Added),
+        "removed" | "remove" => Ok(ChangeKind::Removed),
+        "both" | "all" => Ok(ChangeKind::Both),
+        _ => Err(ConfigError::InvalidChangeKind {
             value: s.to_string(),
         }),
     }

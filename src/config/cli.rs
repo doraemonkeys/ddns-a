@@ -29,6 +29,10 @@ pub struct Cli {
     #[arg(long = "ip-version", value_enum, global = true)]
     pub ip_version: Option<IpVersionArg>,
 
+    /// Filter changes by type: added, removed, or both (default: both)
+    #[arg(long = "change-kind", value_enum, global = true)]
+    pub change_kind: Option<ChangeKindArg>,
+
     /// HTTP method for webhook requests
     #[arg(long)]
     pub method: Option<String>,
@@ -119,12 +123,38 @@ pub enum IpVersionArg {
     Both,
 }
 
+/// Change kind argument for CLI parsing.
+///
+/// Filters which IP changes to report based on the change type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ChangeKindArg {
+    /// Report only IP addresses that were added
+    #[value(name = "added")]
+    Added,
+    /// Report only IP addresses that were removed
+    #[value(name = "removed")]
+    Removed,
+    /// Report both added and removed IP addresses (default)
+    #[value(name = "both")]
+    Both,
+}
+
 impl From<IpVersionArg> for crate::network::IpVersion {
     fn from(arg: IpVersionArg) -> Self {
         match arg {
             IpVersionArg::V4 => Self::V4,
             IpVersionArg::V6 => Self::V6,
             IpVersionArg::Both => Self::Both,
+        }
+    }
+}
+
+impl From<ChangeKindArg> for crate::monitor::ChangeKind {
+    fn from(arg: ChangeKindArg) -> Self {
+        match arg {
+            ChangeKindArg::Added => Self::Added,
+            ChangeKindArg::Removed => Self::Removed,
+            ChangeKindArg::Both => Self::Both,
         }
     }
 }
